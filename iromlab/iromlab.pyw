@@ -32,8 +32,6 @@ from tkinter import scrolledtext as ScrolledText
 from tkinter import messagebox as tkMessageBox
 from tkinter import ttk
 from . import config
-from .kbapi import sru
-from .socketserver import server
 from . import cdworker
 from . import cdinfo
 
@@ -58,9 +56,6 @@ class carrierEntry(tk.Frame):
         self.queue_handler = QueueHandler(self.log_queue)
         config.readyToStart = False
         config.finishedBatch = False
-        self.catidOld = ""
-        self.titleOld = ""
-        self.volumeNoOld = ""
         self.carrierNumber = 0
         self.build_gui()
 
@@ -91,6 +86,7 @@ class carrierEntry(tk.Frame):
         self.bNew.config(state='disabled')
         self.bOpen.config(state='disabled')
         self.batch_button.config(state='normal')
+        self.batchTypes.config(state='normal')
         self.coll_entry.config(state='normal')
         self.coll_entry.focus_set()
         self.staff_name.config(state='normal')
@@ -146,12 +142,13 @@ class carrierEntry(tk.Frame):
             self.bNew.config(state='disabled')
             self.bOpen.config(state='disabled')
             self.batch_button.config(state='disabled')
+            self.batchTypes.config(state='disabled')
+            self.coll_entry.config(state='disabled')
+            self.staff_entry.config(state='disabled')
             self.bFinalise.config(state='normal')
-            self.title_entry.config(state='normal')
-            self.usepreviousTitle_button.config(state='normal')
-            self.volumeNo_entry.config(state='normal')
-            self.volumeNo_entry.delete(0, tk.END)
-            self.volumeNo_entry.insert(tk.END, "1")
+            self.media_entry.config(state='normal')
+            self.media_entry.delete(0, tk.END)
+            self.media_entry.insert(tk.END, "1")
             self.submit_button.config(state='normal')
 
             # Flag that is True if batch is open
@@ -212,12 +209,11 @@ class carrierEntry(tk.Frame):
                         fj.close()
 
                         if jobList[0] != 'EOB':
-                            PPN = jobList[1]
-                            title = jobList[2]
-                            volumeNo = jobList[3]
+                            media_id = jobList[1]
+                            status = jobList[2]
 
-                            # Add PPN/Title + Volume number to treeview widget
-                            self.tv.insert('', 0, text=str(jobCount), values=(PPN, title, volumeNo))
+                            # Add Media ID number to treeview widget
+                            self.tv.insert('', 0, text=str(jobCount), values=(media_id, status))
                             jobCount += 1
 
                     # Update state of buttons /widgets, taking into account whether batch was
@@ -225,17 +221,18 @@ class carrierEntry(tk.Frame):
                     self.bNew.config(state='disabled')
                     self.bOpen.config(state='disabled')
                     self.batch_button.config(state='disabled')
+                    self.batchTypes.config(state='disabled')
+                    self.coll_entry.config(state='disabled')
+                    self.staff_entry.config(state='disabled')
                     if os.path.isfile(os.path.join(config.jobsFolder, 'eob.txt')):
                         self.bFinalise.config(state='disabled')
                         self.submit_button.config(state='disabled')
                     else:
                         self.bFinalise.config(state='normal')
                         self.submit_button.config(state='normal')
-                    self.title_entry.config(state='normal')
-                    self.usepreviousTitle_button.config(state='normal')
-                    self.volumeNo_entry.config(state='normal')
-                    self.volumeNo_entry.delete(0, tk.END)
-                    self.volumeNo_entry.insert(tk.END, "1")
+                    self.media_entry.config(state='normal')
+                    self.media_entry.delete(0, tk.END)
+                    self.media_entry.insert(tk.END, "1")
 
                     # Flag that is True if batch is open
                     config.batchIsOpen = True
@@ -258,27 +255,14 @@ class carrierEntry(tk.Frame):
             fJob.write(lineOut)
             self.bFinalise.config(state='disabled')
             self.submit_button.config(state='disabled')
-            self.title_entry.config(state='disabled')
-            self.usepreviousTitle_button.config(state='disabled')
-            self.volumeNo_entry.delete(0, tk.END)
-            self.volumeNo_entry.config(state='disabled')
+            self.coll_entry.config(state='disabled')
+            self.submit_button.config(state='disabled')
+            self.media_entry.delete(0, tk.END)
+            self.media_entry.config(state='disabled')
             
             # If the startOnFinalize option was activated, set readyToStart flag to True
             if config.startOnFinalize:
                 config.readyToStart = True
-
-    def on_usepreviousTitle(self, event=None):
-        """Add previously entered title to title field"""
-        if self.titleOld == "":
-            msg = "Previous title is not defined"
-            tkMessageBox.showerror("Tile not defined", msg)
-        else:
-            self.title_entry.delete(0, tk.END)
-            self.title_entry.insert(tk.END, self.titleOld)
-            if self.volumeNoOld != "":
-                volumeNoNew = str(int(self.volumeNoOld) + 1)
-                self.volumeNo_entry.delete(0, tk.END)
-                self.volumeNo_entry.insert(tk.END, volumeNoNew)
 
     def on_submit(self, event=None):
         """Process one record and add it to the queue after user pressed submit button"""
@@ -286,24 +270,23 @@ class carrierEntry(tk.Frame):
         self.carrierNumber += 1
 
         # Fetch entered values (strip any leading / tralue whitespace characters)
-        catid = ""
-        title = self.title_entry.get().strip()
-        self.titleOld = title
-        volumeNo = self.volumeNo_entry.get().strip()
-        self.volumeNoOld = volumeNo
+        self.current_coll = self.coll_entry.get().strip() 
+        self.current_media_entry = self.media_entry.get().strip()
+
+        self.current_media_id = self.coll_entry.get().strip() + '_' + self.mediaOld.zfill(4)
 
 
         if not config.batchIsOpen:
             msg = "You must first create a batch or open an existing batch"
             tkMessageBox.showerror("Not ready", msg)
-        elif not representsInt(volumeNo):
+        elif not representsInt(self.current_media_entry):
             msg = "Volume number must be integer value"
             tkMessageBox.showerror("Type mismatch", msg)
-        elif int(volumeNo) < 1:
+        elif int(self.current_media_entry) < 1:
             msg = "Volume number must be greater than or equal to 1"
             tkMessageBox.showerror("Value error", msg)
         else:
-            msg = ("Please load disc ('" + title + "', volume " + str(volumeNo) +
+            msg = ("Please load disc ('" + self.current_media_entry +
                    ") into the disc loader, then press 'OK'")
             tkMessageBox.showinfo("Load disc", msg)
 
@@ -318,21 +301,19 @@ class carrierEntry(tk.Frame):
             jobCSV = csv.writer(fJob, lineterminator='\n')
 
             # Row items to list
-            rowItems = ([jobID, catid, title, volumeNo])
+            rowItems = ([jobID, self.current_media_id, 'queued'])
 
             # Write row to job and close file
             jobCSV.writerow(rowItems)
             fJob.close()
 
             # Display Title + Volume number in treeview widget
-            self.tv.insert('', 0, text=str(self.carrierNumber), values=(catid, title, volumeNo))
+            self.tv.insert('', 0, text=str(self.carrierNumber), values=(self.current_media_id, 'queued'))
 
             # Reset entry fields and set focus on Title field
-            else:
-                self.title_entry.delete(0, tk.END)
-                self.title_entry.focus_set()
-            self.volumeNo_entry.delete(0, tk.END)
-            self.volumeNo_entry.insert(tk.END, "1")
+            self.media_entry.delete(0, tk.END)
+            self.media_entry.insert(tk.END, int(self.current_media_entry) + 1)
+            self.media_entry.focus_set()
 
     def setupLogger(self):
         """Set up logging-related settings"""
@@ -524,19 +505,17 @@ class carrierEntry(tk.Frame):
         self.queue_handler = QueueHandler(self.log_queue)
         config.readyToStart = False
         config.finishedBatch = False
-        self.catidOld = ""
-        self.titleOld = ""
-        self.volumeNoOld = ""
 
         # Update state of buttons / widgets
         self.bNew.config(state='normal')
         self.bOpen.config(state='normal')
         self.bFinalise.config(state='disabled')
         self.bExit.config(state='normal')
+        self.batchTypes.config(state='disabled')
+        self.coll_entry.config(state='disabled')
+        self.staff_entry.config(state='disabled')
         self.submit_button.config(state='disabled')
-        self.title_entry.config(state='disabled')
-        self.usepreviousTitle_button.config(state='disabled')
-        self.volumeNo_entry.config(state='disabled')
+        self.media_entry.config(state='disabled')
 
 class QueueHandler(logging.Handler):
     """Class to send logging records to a queue
@@ -671,25 +650,10 @@ def getConfiguration():
     # For below configuration variables, use default value if value cannot be
     # read from config file (this ensures v1 will work with old config files)
     try:
-        config.socketHost = findElementText(configElt, './config/socketHost')
-    except:
-        pass
-    try:
-        config.socketPort = findElementText(configElt, './config/socketPort')
-    except:
-        pass
-    try:
         if findElementText(configElt, './config/startOnFinalize') == "True":
             config.startOnFinalize = True
         else:
             config.startOnFinalize = False
-    except:
-        pass
-    try:
-        if findElementText(configElt, './config/enableSocketAPI') == "True":
-            config.enableSocketAPI = True
-        else:
-            config.enableSocketAPI = False
     except:
         pass
 
@@ -744,18 +708,9 @@ def main():
     # Start worker as separate thread
     t1 = threading.Thread(target=cdworker.cdWorker, args=[])
     t1.start()
-    # Start socket API as separate thread
-    if config.enableSocketAPI:
-        q = queue.Queue()
-        myServer = server()
-        t2 = threading.Thread(target=server.start,
-                              args=[myServer, config.socketHost, config.socketPort, q])
-        t2.start()
 
     while True:
         try:
-            if config.enableSocketAPI:
-                myCarrierEntry.handleSocketRequests(q)
             root.update_idletasks()
             root.update()
             time.sleep(0.1)
@@ -778,8 +733,6 @@ def main():
             elif config.quitFlag:
                 # User pressed exit
                 t1.join()
-                if config.enableSocketAPI:
-                    t2.join()
                 handlers = myCarrierEntry.logger.handlers[:]
                 for handler in handlers:
                     handler.close()
