@@ -76,7 +76,7 @@ class carrierEntry(tk.Frame):
             tkMessageBox.showinfo("Info", msg)
         if not config.readyToStart:
             # Wait 2 seconds to avoid race condition
-            time.sleep(2)
+            time.sleep(1)
             msg = 'Quitting because user pressed Exit, click OK to exit'
             tkMessageBox.showinfo("Exit", msg)
             os._exit(0)
