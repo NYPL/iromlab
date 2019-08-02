@@ -17,7 +17,7 @@ Research department,  KB / National Library of the Netherlands
 import sys
 import os
 import csv
-import imp
+import importlib
 import time
 import glob
 import xml.etree.ElementTree as ETree
@@ -87,10 +87,19 @@ class carrierEntry(tk.Frame):
         # Create unique batch identifier (UUID, based on host ID and current time)
         # this ensures that if the software is run in parallel on different machines
         # the batch identifiers will always be unique
-        batchID = str(uuid.uuid1())
+
+        self.bNew.config(state='disabled')
+        self.bOpen.config(state='disabled')
+        self.batch_button.config(state='normal')
+        self.coll_entry.config(state='normal')
+        self.coll_entry.focus_set()
+        self.staff_name.config(state='normal')
+        self.batchID = str(uuid.uuid1())
+
+    def on_batchinfo(self, event=None):
 
         # Construct batch name
-        batchName = config.prefixBatch + '-' + batchID
+        batchName = self.coll_entry.get().strip() + '-' + self.batchID
         config.batchFolder = os.path.join(config.rootDir, batchName)
         try:
             os.makedirs(config.batchFolder)
@@ -136,6 +145,7 @@ class carrierEntry(tk.Frame):
             # Update state of buttons / widgets
             self.bNew.config(state='disabled')
             self.bOpen.config(state='disabled')
+            self.batch_button.config(state='disabled')
             self.bFinalise.config(state='normal')
             if config.enablePPNLookup:
                 self.catid_entry.config(state='normal')
@@ -218,6 +228,7 @@ class carrierEntry(tk.Frame):
                     # finalized by user
                     self.bNew.config(state='disabled')
                     self.bOpen.config(state='disabled')
+                    self.batch_button.config(state='disabled')
                     if os.path.isfile(os.path.join(config.jobsFolder, 'eob.txt')):
                         self.bFinalise.config(state='disabled')
                         self.submit_button.config(state='disabled')
@@ -441,7 +452,7 @@ class carrierEntry(tk.Frame):
         """Build the GUI"""
         
         # Read configuration file
-        getConfiguration()
+        #getConfiguration()
         
         self.root.title('iromlab v.' + config.version)
         self.root.option_add('*tearOff', 'FALSE')
@@ -452,33 +463,41 @@ class carrierEntry(tk.Frame):
         self.grid_columnconfigure(3, weight=1, uniform='a')
 
         # Batch toolbar
-        self.bNew = tk.Button(self,
-                              text="New",
-                              height=2,
-                              width=4,
-                              underline=0,
-                              command=self.on_create)
+        self.bNew = tk.Button(
+            self,
+            text="New Batch",
+            height=2,
+            width=4,
+            underline=0,
+            command=self.on_create
+        )
         self.bNew.grid(column=0, row=1, sticky='ew')
-        self.bOpen = tk.Button(self,
-                               text="Open",
-                               height=2,
-                               width=4,
-                               underline=0,
-                               command=self.on_open)
+        self.bOpen = tk.Button(
+            self,
+            text="Open Batch",
+            height=2,
+            width=4,
+            underline=0,
+            command=self.on_open
+        )
         self.bOpen.grid(column=1, row=1, sticky='ew')
-        self.bFinalise = tk.Button(self,
-                                   text="Finalize",
-                                   height=2,
-                                   width=4,
-                                   underline=0,
-                                   command=self.on_finalise)
+        self.bFinalise = tk.Button(
+            self,
+            text="Finalize Batch",
+            height=2,
+            width=4,
+            underline=0,
+            command=self.on_finalise
+        )
         self.bFinalise.grid(column=2, row=1, sticky='ew')
-        self.bExit = tk.Button(self,
-                               text="Exit",
-                               height=2,
-                               width=4,
-                               underline=0,
-                               command=self.on_quit)
+        self.bExit = tk.Button(
+            self,
+            text="Exit",
+            height=2,
+            width=4,
+            underline=0,
+            command=self.on_quit
+        )
         self.bExit.grid(column=3, row=1, sticky='ew')
 
         # Disable finalise button on startup
@@ -486,83 +505,75 @@ class carrierEntry(tk.Frame):
 
         ttk.Separator(self, orient='horizontal').grid(column=0, row=2, columnspan=4, sticky='ew')
 
-        # Entry elements for each carrier
+        # Batch info fields
+        batchTypes = { 'Bags' , 'Disc Images' }
+        tk.Label(self, text="Batch Type").grid(column = 0, row = 3, sticky='w')
+        self.batchTypeMenu = tk.OptionMenu(self, 'Bags', *batchTypes)
+        self.batchTypeMenu.grid(column =1, row = 3, sticky='ew', columnspan=3)
 
-        if config.enablePPNLookup:
-            # Catalog ID (PPN)
-            tk.Label(self, text='PPN').grid(column=0, row=3, sticky='w')
-            self.catid_entry = tk.Entry(self, width=20, state='disabled')
-
-            # Pressing this button adds previously entered PPN to entry field
-            self.usepreviousPPN_button = tk.Button(self,
-                               text='Use previous',
-                               height=1,
-                               width=2,
-                               underline=0,
-                               state='disabled',
-                               command=self.on_usepreviousPPN)
-            self.usepreviousPPN_button.grid(column=2, row=3, sticky='ew')
-
-            self.catid_entry.grid(column=1, row=3, sticky='w')
-        else:
-            # PPN lookup disabled, so present Title entry field
-            tk.Label(self, text='Title').grid(column=0, row=3, sticky='w')
-            self.title_entry = tk.Entry(self, width=45, state='disabled')
-
-            # Pressing this button adds previously entered title to entry field
-            self.usepreviousTitle_button = tk.Button(self,
-                               text='Use previous',
-                               height=1,
-                               width=2,
-                               underline=0,
-                               state='disabled',
-                               command=self.on_usepreviousTitle)
-            self.usepreviousTitle_button.grid(column=3, row=3, sticky='ew')
-            self.title_entry.grid(column=1, row=3, sticky='w', columnspan=3)
-
-        # Volume number
-        tk.Label(self, text='Volume number').grid(column=0, row=4, sticky='w')
-        self.volumeNo_entry = tk.Entry(self, width=5, state='disabled')
+        tk.Label(self, text='Collection ID').grid(column=0, row=4, sticky='w')
+        self.coll_entry = tk.Entry(self, width=45, state='disabled')
+        self.coll_entry.grid(column=1, row=4, sticky='w', columnspan=3)
         
-        self.volumeNo_entry.grid(column=1, row=4, sticky='w')
+        tk.Label(self, text='Staff').grid(column=0, row=5, sticky='w')
+        self.staff_name = tk.Entry(self, width=45, state='disabled')
+        self.staff_name.grid(column=1, row=5, sticky='w', columnspan=3)
 
-        ttk.Separator(self, orient='horizontal').grid(column=0, row=5, columnspan=4, sticky='ew')
-
-        self.submit_button = tk.Button(self,
-                                       text='Submit',
-                                       height=2,
-                                       width=4,
-                                       underline=0,
-                                       state='disabled',
-                                       command=self.on_submit)
-        self.submit_button.grid(column=1, row=6, sticky='ew')
+        self.batch_button = tk.Button(
+            self,
+            text='Save Batch Info',
+            height=2,
+            width=4,
+            underline=0,
+            state='disabled',
+            command=self.on_batchinfo
+        )
+        self.batch_button.grid(column=0, row=6, sticky='ew', columnspan=4)
 
         ttk.Separator(self, orient='horizontal').grid(column=0, row=7, columnspan=4, sticky='ew')
 
+        # Disc entry
+        tk.Label(self, text='Media ID').grid(column=0, row=8, sticky='w')
+        self.media_entry = tk.Entry(self, width=5, state='disabled')
+        self.media_entry.grid(column=1, row=8, sticky='w', columnspan=2)
+
+        self.submit_button = tk.Button(
+            self,
+            text='Add Disc',
+            height=2,
+            width=4,
+            underline=0,
+            state='disabled',
+            command=self.on_submit
+        )
+        self.submit_button.grid(column=0, row=9, sticky='ew', columnspan=4)
+
+        ttk.Separator(self, orient='horizontal').grid(column=0, row=10, columnspan=4, sticky='ew')
+
         # Treeview widget displays info on entered carriers
-        self.tv = ttk.Treeview(self, height=10,
-                               columns=('PPN', 'Title', 'VolumeNo'))
-        self.tv.heading('#0', text='Queue number')
-        self.tv.heading('#1', text='PPN')
-        self.tv.heading('#2', text='Title')
-        self.tv.heading('#3', text='Volume number')
+        self.tv = ttk.Treeview(
+            self,
+            height=10,
+            columns=('Discs in queue'))
+        self.tv.heading('#0', text='Queue')
+        self.tv.heading('#1', text='Media ID')
+        self.tv.heading('#2', text='Status')
         self.tv.column('#0', stretch=tk.YES, width=5)
-        self.tv.column('#1', stretch=tk.YES, width=10)
-        self.tv.column('#2', stretch=tk.YES, width=250)
-        self.tv.column('#3', stretch=tk.YES, width=5)
-        self.tv.grid(column=0, row=8, sticky='ew', columnspan=4)
+        self.tv.column('#1', stretch=tk.YES, width=250)
+        self.tv.column('#2', stretch=tk.YES, width=50)
+        self.tv.grid(column=0, row=11, sticky='ew', columnspan=4)
 
         # ScrolledText widget displays logging info
         self.st = ScrolledText.ScrolledText(self, state='disabled', height=15)
         self.st.configure(font='TkFixedFont')
-        self.st.grid(column=0, row=10, sticky='ew', columnspan=4)
+        self.st.grid(column=0, row=12, sticky='ew', columnspan=4)
 
         # Define bindings for keyboard shortcuts: buttons
         self.root.bind_all('<Control-Key-n>', self.on_create)
         self.root.bind_all('<Control-Key-o>', self.on_open)
         self.root.bind_all('<Control-Key-f>', self.on_finalise)
-        self.root.bind_all('<Control-Key-e>', self.on_quit)
-        self.root.bind_all('<Control-Key-s>', self.on_submit)
+        self.root.bind_all('<Control-Key-q>', self.on_quit)
+        self.root.bind_all('<Control-Key-a>', self.on_submit)
 
         # TODO keyboard shortcuts for Radiobox selections: couldn't find ANY info on how to do this!
 
