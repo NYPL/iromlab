@@ -30,6 +30,7 @@ import tkinter as tk
 from tkinter import filedialog as tkFileDialog
 from tkinter import scrolledtext as ScrolledText
 from tkinter import messagebox as tkMessageBox
+from tkinter import simpledialog as tkSimpleDialog
 from tkinter import ttk
 from . import config
 from .kbapi import sru
@@ -53,14 +54,14 @@ class carrierEntry(tk.Frame):
         self.root = parent
         # Logging stuff
         self.logger = logging.getLogger()
+
         # Create a logging handler using a queue
         self.log_queue = queue.Queue(-1)
         self.queue_handler = QueueHandler(self.log_queue)
         config.readyToStart = False
         config.finishedBatch = False
-        self.catidOld = ""
-        self.titleOld = ""
-        self.volumeNoOld = ""
+        self.collOld = ""
+        self.mediaOld = ""
         self.carrierNumber = 0
         self.build_gui()
 
@@ -87,10 +88,19 @@ class carrierEntry(tk.Frame):
         # Create unique batch identifier (UUID, based on host ID and current time)
         # this ensures that if the software is run in parallel on different machines
         # the batch identifiers will always be unique
-        batchID = str(uuid.uuid1())
+
+        self.bNew.config(state='disabled')
+        self.bOpen.config(state='disabled')
+        self.batch_button.config(state='normal')
+        self.coll_entry.config(state='normal')
+        self.coll_entry.focus_set()
+        self.staff_name.config(state='normal')
+        self.batchID = str(uuid.uuid1())
+
+    def on_batchinfo(self, event=None):
 
         # Construct batch name
-        batchName = config.prefixBatch + '-' + batchID
+        batchName = self.coll_entry.get().strip() + '-' + self.batchID
         config.batchFolder = os.path.join(config.rootDir, batchName)
         try:
             os.makedirs(config.batchFolder)
@@ -137,15 +147,12 @@ class carrierEntry(tk.Frame):
             self.bNew.config(state='disabled')
             self.bOpen.config(state='disabled')
             self.bFinalise.config(state='normal')
-            if config.enablePPNLookup:
-                self.catid_entry.config(state='normal')
-                self.usepreviousPPN_button.config(state='normal')
-            else:
-                self.title_entry.config(state='normal')
-                self.usepreviousTitle_button.config(state='normal')
-            self.volumeNo_entry.config(state='normal')
-            self.volumeNo_entry.delete(0, tk.END)
-            self.volumeNo_entry.insert(tk.END, "1")
+            self.coll_entry.config(state='disabled')
+            self.staff_name.config(state='disabled')
+            self.media_entry.config(state='normal')
+            self.media_entry.delete(0, tk.END)
+            self.media_entry.insert(tk.END, "1")
+            self.media_entry.focus_set()
             self.submit_button.config(state='normal')
 
             # Flag that is True if batch is open
@@ -206,12 +213,11 @@ class carrierEntry(tk.Frame):
                         fj.close()
 
                         if jobList[0] != 'EOB':
-                            PPN = jobList[1]
-                            title = jobList[2]
-                            volumeNo = jobList[3]
+                            coll = jobList[1]
+                            media = jobList[2]
 
-                            # Add PPN/Title + Volume number to treeview widget
-                            self.tv.insert('', 0, text=str(jobCount), values=(PPN, title, volumeNo))
+                            # Add MediaID and Media number to treeview widget
+                            self.tv.insert('', 0, text=str(jobCount), values=(coll))
                             jobCount += 1
 
                     # Update state of buttons /widgets, taking into account whether batch was
@@ -224,15 +230,10 @@ class carrierEntry(tk.Frame):
                     else:
                         self.bFinalise.config(state='normal')
                         self.submit_button.config(state='normal')
-                    if config.enablePPNLookup:
-                        self.catid_entry.config(state='normal')
-                        self.usepreviousPPN_button.config(state='normal')
-                    else:
-                        self.title_entry.config(state='normal')
-                        self.usepreviousTitle_button.config(state='normal')
-                    self.volumeNo_entry.config(state='normal')
-                    self.volumeNo_entry.delete(0, tk.END)
-                    self.volumeNo_entry.insert(tk.END, "1")
+                    self.media_entry.config(state='normal')
+                    self.media_entry.delete(0, tk.END)
+                    self.media_entry.insert(tk.END, "1")
+                    self.media_entry.focus_set()
 
                     # Flag that is True if batch is open
                     config.batchIsOpen = True
@@ -255,45 +256,13 @@ class carrierEntry(tk.Frame):
             fJob.write(lineOut)
             self.bFinalise.config(state='disabled')
             self.submit_button.config(state='disabled')
-            if config.enablePPNLookup:
-                self.catid_entry.config(state='disabled')
-                self.usepreviousPPN_button.config(state='disabled')
-            else:
-                self.title_entry.config(state='disabled')
-                self.usepreviousTitle_button.config(state='disabled')
-            self.volumeNo_entry.delete(0, tk.END)
-            self.volumeNo_entry.config(state='disabled')
+            self.coll_entry.config(state='disabled')
+            self.media_entry.delete(0, tk.END)
+            self.media_entry.config(state='disabled')
             
             # If the startOnFinalize option was activated, set readyToStart flag to True
             if config.startOnFinalize:
                 config.readyToStart = True
-
-    def on_usepreviousPPN(self, event=None):
-        """Add previously entered PPN to entry field"""
-        if self.catidOld == "":
-            msg = "Previous PPN is not defined"
-            tkMessageBox.showerror("PPN not defined", msg)
-        else:
-            self.catid_entry.delete(0, tk.END)
-            self.catid_entry.insert(tk.END, self.catidOld)
-            if self.volumeNoOld != "":
-                # Increase volume number value
-                volumeNoNew = str(int(self.volumeNoOld) + 1)
-                self.volumeNo_entry.delete(0, tk.END)
-                self.volumeNo_entry.insert(tk.END, volumeNoNew)
-
-    def on_usepreviousTitle(self, event=None):
-        """Add previously entered title to title field"""
-        if self.titleOld == "":
-            msg = "Previous title is not defined"
-            tkMessageBox.showerror("Tile not defined", msg)
-        else:
-            self.title_entry.delete(0, tk.END)
-            self.title_entry.insert(tk.END, self.titleOld)
-            if self.volumeNoOld != "":
-                volumeNoNew = str(int(self.volumeNoOld) + 1)
-                self.volumeNo_entry.delete(0, tk.END)
-                self.volumeNo_entry.insert(tk.END, volumeNoNew)
 
     def on_submit(self, event=None):
         """Process one record and add it to the queue after user pressed submit button"""
@@ -301,72 +270,27 @@ class carrierEntry(tk.Frame):
         self.carrierNumber += 1
 
         # Fetch entered values (strip any leading / tralue whitespace characters)
-        if config.enablePPNLookup:
-            catid = self.catid_entry.get().strip()
-            self.catidOld = catid
-        else:
-            catid = ""
-            title = self.title_entry.get().strip()
-            self.titleOld = title
-        volumeNo = self.volumeNo_entry.get().strip()
-        self.volumeNoOld = volumeNo
+        
+        self.collOld = self.coll_entry.get().strip() 
+        self.mediaOld = self.media_entry.get().strip()
 
-        if config.enablePPNLookup:
-            # Check for empty string
-            if str(catid) == '':
-                noGGCRecords = 0
-            else:
-                # Lookup catalog identifier
-                sruSearchString = '"PPN=' + str(catid) + '"'
-                response = sru.search(sruSearchString, "GGC")
+        mediaID = self.coll_entry.get().strip() + '_' + self.mediaOld.zfill(4)
 
-                if not response:
-                    noGGCRecords = 0
-                else:
-                    noGGCRecords = response.sru.nr_of_records
-        else:
-            noGGCRecords = 1
 
         if not config.batchIsOpen:
             msg = "You must first create a batch or open an existing batch"
             tkMessageBox.showerror("Not ready", msg)
-        elif not representsInt(volumeNo):
-            msg = "Volume number must be integer value"
+        elif not representsInt(self.mediaOld):
+            msg = "Media number must be integer value"
             tkMessageBox.showerror("Type mismatch", msg)
-        elif int(volumeNo) < 1:
+        elif int(self.mediaOld) < 1:
             msg = "Volume number must be greater than or equal to 1"
             tkMessageBox.showerror("Value error", msg)
-        elif noGGCRecords == 0:
-            # No matching record found
-            msg = ("Search for PPN=" + str(catid) + " returned " +
-                   "no matching record in catalog!")
-            tkMessageBox.showerror("PPN not found", msg)
         else:
-            if config.enablePPNLookup:
-                # Matching record found. Display title and ask for confirmation
-                record = next(response.records)
-
-                # Title can be in either in:
-                # 1. title element
-                # 2. title element with maintitle attribute
-                # 3. title element with intermediatetitle attribute (3 in combination with 2)
-
-                titlesMain = record.titlesMain
-                titlesIntermediate = record.titlesIntermediate
-                titles = record.titles
-
-                if titlesMain != []:
-                    title = titlesMain[0]
-                    if titlesIntermediate != []:
-                        title = title + ", " + titlesIntermediate[0]
-                else:
-                    title = titles[0]
-
-            msg = "Found title:\n\n'" + title + "'.\n\n Is this correct?"
+            msg = "Found title:\n\n'" + mediaID + "'.\n\n Is this correct?"
             if tkMessageBox.askyesno("Confirm", msg):
                 # Prompt operator to insert carrier in disc robot
-                msg = ("Please load disc ('" + title + "', volume " + str(volumeNo) +
-                       ") into the disc loader, then press 'OK'")
+                msg = ("Please load disc ('" + mediaID + ") into the disc loader, then press 'OK'")
                 tkMessageBox.showinfo("Load disc", msg)
 
                 # Create unique identifier for this job (UUID, based on host ID and current time)
@@ -380,24 +304,21 @@ class carrierEntry(tk.Frame):
                 jobCSV = csv.writer(fJob, lineterminator='\n')
 
                 # Row items to list
-                rowItems = ([jobID, catid, title, volumeNo])
+                rowItems = ([jobID, self.collOld, mediaID])
 
                 # Write row to job and close file
                 jobCSV.writerow(rowItems)
                 fJob.close()
 
-                # Display PPN/Title + Volume number in treeview widget
-                self.tv.insert('', 0, text=str(self.carrierNumber), values=(catid, title, volumeNo))
+                # Display Media ID and Media number in treeview widget
+                self.tv.insert('', 0, text=str(self.carrierNumber), values=(mediaID))
 
-                # Reset entry fields and set focus on PPN / Title field
-                if config.enablePPNLookup:
-                    self.catid_entry.delete(0, tk.END)
-                    self.catid_entry.focus_set()
-                else:
-                    self.title_entry.delete(0, tk.END)
-                    self.title_entry.focus_set()
-                self.volumeNo_entry.delete(0, tk.END)
-                self.volumeNo_entry.insert(tk.END, "1")
+                # Reset entry fields and set focus on Media field
+                self.coll_entry.delete(0, tk.END)
+                self.coll_entry.insert(tk.END, self.collOld)
+                self.media_entry.delete(0, tk.END)
+                self.media_entry.insert(tk.END, int(self.mediaOld) + 1)
+                self.media_entry.focus_set()
 
     def setupLogger(self):
         """Set up logging-related settings"""
@@ -413,6 +334,7 @@ class carrierEntry(tk.Frame):
         formatter = logging.Formatter('%(levelname)s: %(message)s')
         self.queue_handler.setFormatter(formatter)
         self.logger.addHandler(self.queue_handler)
+        logging.info(self.logger.name)
 
 
     def display(self, record):
@@ -453,21 +375,21 @@ class carrierEntry(tk.Frame):
 
         # Batch toolbar
         self.bNew = tk.Button(self,
-                              text="New",
+                              text="New Batch",
                               height=2,
                               width=4,
                               underline=0,
                               command=self.on_create)
         self.bNew.grid(column=0, row=1, sticky='ew')
         self.bOpen = tk.Button(self,
-                               text="Open",
+                               text="Open Batch",
                                height=2,
                                width=4,
                                underline=0,
                                command=self.on_open)
         self.bOpen.grid(column=1, row=1, sticky='ew')
         self.bFinalise = tk.Button(self,
-                                   text="Finalize",
+                                   text="Finalize Batch",
                                    height=2,
                                    width=4,
                                    underline=0,
@@ -488,69 +410,50 @@ class carrierEntry(tk.Frame):
 
         # Entry elements for each carrier
 
-        if config.enablePPNLookup:
-            # Catalog ID (PPN)
-            tk.Label(self, text='PPN').grid(column=0, row=3, sticky='w')
-            self.catid_entry = tk.Entry(self, width=20, state='disabled')
-
-            # Pressing this button adds previously entered PPN to entry field
-            self.usepreviousPPN_button = tk.Button(self,
-                               text='Use previous',
-                               height=1,
-                               width=2,
-                               underline=0,
-                               state='disabled',
-                               command=self.on_usepreviousPPN)
-            self.usepreviousPPN_button.grid(column=2, row=3, sticky='ew')
-
-            self.catid_entry.grid(column=1, row=3, sticky='w')
-        else:
-            # PPN lookup disabled, so present Title entry field
-            tk.Label(self, text='Title').grid(column=0, row=3, sticky='w')
-            self.title_entry = tk.Entry(self, width=45, state='disabled')
-
-            # Pressing this button adds previously entered title to entry field
-            self.usepreviousTitle_button = tk.Button(self,
-                               text='Use previous',
-                               height=1,
-                               width=2,
-                               underline=0,
-                               state='disabled',
-                               command=self.on_usepreviousTitle)
-            self.usepreviousTitle_button.grid(column=3, row=3, sticky='ew')
-            self.title_entry.grid(column=1, row=3, sticky='w', columnspan=3)
-
-        # Volume number
-        tk.Label(self, text='Volume number').grid(column=0, row=4, sticky='w')
-        self.volumeNo_entry = tk.Entry(self, width=5, state='disabled')
+        # present Batch info fields
+        tk.Label(self, text='Collection ID').grid(column=0, row=3, sticky='w')
+        self.coll_entry = tk.Entry(self, width=45, state='disabled')
+        self.coll_entry.grid(column=1, row=3, sticky='w', columnspan=3)
         
-        self.volumeNo_entry.grid(column=1, row=4, sticky='w')
+        tk.Label(self, text='Staff').grid(column=0, row=4, sticky='w')
+        self.staff_name = tk.Entry(self, width=45, state='disabled')
+        self.staff_name.grid(column=1, row=4, sticky='w', columnspan=3)
+
+        self.batch_button = tk.Button(self,
+                                       text='Save Batch Info',
+                                       height=2,
+                                       width=4,
+                                       underline=0,
+                                       state='disabled',
+                                       command=self.on_batchinfo)
+        self.batch_button.grid(column=3, row=3, sticky='ew')
 
         ttk.Separator(self, orient='horizontal').grid(column=0, row=5, columnspan=4, sticky='ew')
 
+        # Volume number
+        tk.Label(self, text='Media ID').grid(column=0, row=6, sticky='w')
+        self.media_entry = tk.Entry(self, width=5, state='disabled')
+        self.media_entry.grid(column=1, row=6, sticky='w')
+
         self.submit_button = tk.Button(self,
-                                       text='Submit',
+                                       text='Queue Disc',
                                        height=2,
                                        width=4,
                                        underline=0,
                                        state='disabled',
                                        command=self.on_submit)
-        self.submit_button.grid(column=1, row=6, sticky='ew')
+        self.submit_button.grid(column=3, row=6, sticky='ew')
 
-        ttk.Separator(self, orient='horizontal').grid(column=0, row=7, columnspan=4, sticky='ew')
+        ttk.Separator(self, orient='horizontal').grid(column=0, row=8, columnspan=4, sticky='ew')
 
         # Treeview widget displays info on entered carriers
         self.tv = ttk.Treeview(self, height=10,
-                               columns=('PPN', 'Title', 'VolumeNo'))
-        self.tv.heading('#0', text='Queue number')
-        self.tv.heading('#1', text='PPN')
-        self.tv.heading('#2', text='Title')
-        self.tv.heading('#3', text='Volume number')
+                               columns=('Media ID'))
+        self.tv.heading('#0', text='Queue')
+        self.tv.heading('#1', text='Media ID')
         self.tv.column('#0', stretch=tk.YES, width=5)
-        self.tv.column('#1', stretch=tk.YES, width=10)
-        self.tv.column('#2', stretch=tk.YES, width=250)
-        self.tv.column('#3', stretch=tk.YES, width=5)
-        self.tv.grid(column=0, row=8, sticky='ew', columnspan=4)
+        self.tv.column('#1', stretch=tk.YES, width=250)
+        self.tv.grid(column=0, row=9, sticky='ew', columnspan=4)
 
         # ScrolledText widget displays logging info
         self.st = ScrolledText.ScrolledText(self, state='disabled', height=15)
@@ -562,7 +465,7 @@ class carrierEntry(tk.Frame):
         self.root.bind_all('<Control-Key-o>', self.on_open)
         self.root.bind_all('<Control-Key-f>', self.on_finalise)
         self.root.bind_all('<Control-Key-e>', self.on_quit)
-        self.root.bind_all('<Control-Key-s>', self.on_submit)
+        self.root.bind_all('<Control-Key-q>', self.on_submit)
 
         # TODO keyboard shortcuts for Radiobox selections: couldn't find ANY info on how to do this!
 
@@ -589,9 +492,8 @@ class carrierEntry(tk.Frame):
         self.queue_handler = QueueHandler(self.log_queue)
         config.readyToStart = False
         config.finishedBatch = False
-        self.catidOld = ""
-        self.titleOld = ""
-        self.volumeNoOld = ""
+        self.collOld = ""
+        self.mediaOld = ""
 
         # Update state of buttons / widgets
         self.bNew.config(state='normal')
@@ -599,47 +501,9 @@ class carrierEntry(tk.Frame):
         self.bFinalise.config(state='disabled')
         self.bExit.config(state='normal')
         self.submit_button.config(state='disabled')
-        if config.enablePPNLookup:
-            self.catid_entry.config(state='disabled')
-            self.usepreviousPPN_button.config(state='disabled')
-        else:
-            self.title_entry.config(state='disabled')
-            self.usepreviousTitle_button.config(state='disabled')
-        self.volumeNo_entry.config(state='disabled')
+        self.coll_entry.config(state='disabled')
+        self.media_entry.config(state='disabled')
 
-    def handleSocketRequests(self, q):
-        """ Update contents of PPN and Title widgets on incoming requests from socket interface
-        """
-        try:
-            message = q.get_nowait()
-            if config.enablePPNLookup:
-                try:
-                    catid = message
-                    self.catid_entry.delete(0, tk.END)
-                    self.catid_entry.insert(tk.END, catid)
-                    if catid == self.catidOld and catid != "":
-                        # Increase volume number value if existing catid
-                        volumeNoNew = str(int(self.volumeNoOld) + 1)
-                        self.volumeNo_entry.delete(0, tk.END)
-                        self.volumeNo_entry.insert(tk.END, volumeNoNew)
-                except:
-                    # TODO: catch more specific errors here?
-                    pass
-            else:
-                try:
-                    title = message
-                    self.title_entry.delete(0, tk.END)
-                    self.title_entry.insert(tk.END, title)
-                    if title == self.titleOld and title != "":
-                        # Increase volume number value if existing catid
-                        volumeNoNew = str(int(self.volumeNoOld) + 1)
-                        self.volumeNo_entry.delete(0, tk.END)
-                        self.volumeNo_entry.insert(tk.END, volumeNoNew)
-                except:
-                    # TODO: catch more specific errors here?
-                    pass
-        except queue.Empty:
-            pass
 
 class QueueHandler(logging.Handler):
     """Class to send logging records to a queue
@@ -864,8 +728,6 @@ def main():
 
     while True:
         try:
-            if config.enableSocketAPI:
-                myCarrierEntry.handleSocketRequests(q)
             root.update_idletasks()
             root.update()
             time.sleep(0.1)
