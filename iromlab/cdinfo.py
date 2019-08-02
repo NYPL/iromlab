@@ -10,7 +10,7 @@ from . import shared
 def getCarrierInfo(writeDirectory):
     """Determine carrier type and number of sessions on carrier"""
 
-    cdInfoLogFile = os.path.join(writeDirectory, "cd-info.log")
+    cdInfoLogFile = os.path.join(writeDirectory, "metadata", "cd-info.log")
 
     args = [config.cdInfoExe]
     args.append("-C")

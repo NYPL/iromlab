@@ -21,6 +21,22 @@ from . import isobuster
 from . import dbpoweramp
 from . import verifyaudio
 from . import mdo
+from . import discbag
+
+def setupLogger(self):
+    """Set up logging-related settings"""
+    logFile = os.path.join(config.batchFolder, 'batch.log')
+
+    logging.basicConfig(handlers=[logging.FileHandler(logFile, 'a', 'utf-8')],
+                        level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
+
+    # Add the handler to logger
+    self.logger = logging.getLogger()
+    # This sets the console output format (slightly different from basicConfig!)
+    formatter = logging.Formatter('%(levelname)s: %(message)s')
+    self.queue_handler.setFormatter(formatter)
+    self.logger.addHandler(self.queue_handler)
 
 def mediumLoaded(driveName):
     """Returns True if medium is loaded (also if blank/unredable), False if not"""
@@ -104,22 +120,33 @@ def processDisc(carrierData):
     """Process one disc / job"""
 
     jobID = carrierData['jobID']
-    PPN = carrierData['PPN']
-
-    logging.info(''.join(['### Job identifier: ', jobID]))
-    logging.info(''.join(['PPN: ', carrierData['PPN']]))
-    logging.info(''.join(['Title: ', carrierData['title']]))
-    logging.info(''.join(['Volume number: ', carrierData['volumeNo']]))
 
     # Initialise reject and success status
     reject = False
     success = True
 
     # Create output folder for this disc
-    dirDisc = os.path.join(config.batchFolder, jobID)
-    logging.info(''.join(['disc directory: ', dirDisc]))
+    dirDisc = os.path.join(config.batchFolder, carrierData['mediaID'])
+ 
     if not os.path.exists(dirDisc):
         os.makedirs(dirDisc)
+        os.makedirs(os.path.join(dirDisc, 'metadata'))
+        os.makedirs(os.path.join(dirDisc, 'objects'))
+
+    logFile = os.path.join(dirDisc, 'metadata', 'transfer.log')
+
+    discLog = logging.FileHandler(logFile, 'a', 'utf-8')
+    discLog.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger = logging.getLogger()
+    logging.info(dir(logger))
+    logging.info(logger.handlers)
+    logger.addHandler(discLog)
+    logging.info(logger.handlers)
+
+    logging.info(''.join(['disc directory: ', dirDisc]))
+    logging.info(''.join(['### Job identifier: ', jobID]))
+    logging.info(''.join(['Collection ID: ', carrierData['mediaID']]))
+    logging.info(''.join(['Media ID: ', carrierData['mediaID']]))
 
     # Load disc
     logging.info('*** Loading disc ***')
@@ -258,41 +285,28 @@ def processDisc(carrierData):
                 logging.info(''.join(['isobuster command: ', resultIsoBuster['cmdStr']]))
                 logging.info(''.join(['isobuster-status: ', str(resultIsoBuster['status'])]))
                 logging.info(''.join(['isobuster-log: ', statusIsoBuster]))
-                logging.info(''.join(['volumeIdentifier: ',
-                                      str(resultIsoBuster['volumeIdentifier'])]))
+                logging.info(''.join(['volumeIdentifier: ', str(resultIsoBuster['volumeIdentifier'])]))
                 logging.info(''.join(['isolyzerSuccess: ', str(isolyzerSuccess)]))
                 logging.info(''.join(['imageTruncated: ', str(imageTruncated)]))
 
+            ## Generate checksum file
+            logging.info('*** Computing checksums ***')
+            successChecksum = checksumDirectory(dirDisc)
+
         elif carrierInfo["containsData"] and not carrierInfo["cdInteractive"]:
-            logging.info('*** Extracting data session to ISO ***')
-            # Create ISO image of first session
-            resultIsoBuster = isobuster.extractData(dirDisc, 1, 0)
+            logging.info('*** Extracting data session to bag ***')
+            resultBagging = discbag.extractData(dirDisc, 1, 0)
 
-            statusIsoBuster = resultIsoBuster["log"].strip()
-            isolyzerSuccess = resultIsoBuster['isolyzerSuccess']
-            imageTruncated = resultIsoBuster['imageTruncated']
+            bagSuccess = resultBagging['bagSuccess']
 
-            if statusIsoBuster != "0":
+            if not bagSuccess:
                 success = False
                 reject = True
-                logging.error("Isobuster exited with error(s)")
+                logging.error("Bagit-python exited with error(s)")
 
-            elif not isolyzerSuccess:
-                success = False
-                reject = True
-                logging.error("Isolyzer exited with error(s)")
-
-            elif imageTruncated:
-                success = False
-                reject = True
-                logging.error("Isolyzer detected truncated ISO image")
-
-            logging.info(''.join(['isobuster command: ', resultIsoBuster['cmdStr']]))
-            logging.info(''.join(['isobuster-status: ', str(resultIsoBuster['status'])]))
-            logging.info(''.join(['isobuster-log: ', statusIsoBuster]))
+            logging.info(''.join(['bag command command: ', resultIsoBuster['cmdStr']]))
             logging.info(''.join(['volumeIdentifier: ', str(resultIsoBuster['volumeIdentifier'])]))
-            logging.info(''.join(['isolyzerSuccess: ', str(isolyzerSuccess)]))
-            logging.info(''.join(['imageTruncated: ', str(imageTruncated)]))
+            logging.info(''.join(['bagSuccess: ', str(bagSuccess)]))
 
         elif carrierInfo["cdInteractive"]:
             logging.info('*** Extracting data from CD Interactive to raw image file ***')
@@ -314,19 +328,10 @@ def processDisc(carrierData):
             reject = True
             logging.error("Unable to identify disc type")
 
-        if config.enablePPNLookup:
-            # Fetch metadata from KBMDO and store as file
-            logging.info('*** Writing metadata from KB-MDO to file ***')
-
-            successMdoWrite = mdo.writeMDORecord(PPN, dirDisc)
-            if not successMdoWrite:
-                success = False
-                reject = True
-                logging.error("Could not write metadata from KB-MDO")
-
         # Generate checksum file
-        logging.info('*** Computing checksums ***')
-        successChecksum = checksumDirectory(dirDisc)
+        # logging.info('*** Computing checksums ***')
+        # successChecksum = checksumDirectory(dirDisc)
+        successChecksum = True 
 
         if not successChecksum:
             success = False
@@ -358,9 +363,8 @@ def processDisc(carrierData):
 
     # Put all items for batch manifest entry in a list
     rowBatchManifest = ([jobID,
-                         carrierData['PPN'],
-                         carrierData['volumeNo'],
-                         carrierData['title'],
+                         carrierData['mediaID'],
+                         carrierData['collection'],
                          volumeID,
                          str(success),
                          str(carrierInfo['containsAudio']),
@@ -378,6 +382,8 @@ def processDisc(carrierData):
     # Write row to batch manifest and close file
     csvBm.writerow(rowBatchManifest)
     bm.close()
+    logger.removeHandler(discLog)
+
     return success
 
 
@@ -387,9 +393,8 @@ def processDiscTest(carrierData):
     """
     jobID = carrierData['jobID']
     logging.info(''.join(['### Job identifier: ', jobID]))
-    logging.info(''.join(['PPN: ', carrierData['PPN']]))
-    logging.info(''.join(['Title: ', carrierData['title']]))
-    logging.info(''.join(['Volume number: ', carrierData['volumeNo']]))
+    logging.info(''.join(['Collection ID: ', carrierData['collection']]))
+    logging.info(''.join(['Media ID: ', carrierData['mediaID']]))
 
     # Create dummy carrierInfo dictionary (values are needed for batch manifest)
     carrierInfo = {}
@@ -407,9 +412,8 @@ def processDiscTest(carrierData):
     # Put all items for batch manifest entry in a list
 
     rowBatchManifest = ([jobID,
-                         carrierData['PPN'],
-                         carrierData['volumeNo'],
-                         carrierData['title'],
+                         carrierData['mediaID'],
+                         carrierData['collection'],
                          volumeID,
                          str(success),
                          str(carrierInfo['containsAudio']),
@@ -460,9 +464,8 @@ def cdWorker():
     # Write header row if batch manifest doesn't exist already
     if not os.path.isfile(config.batchManifest):
         headerBatchManifest = (['jobID',
-                                'PPN',
-                                'volumeNo',
-                                'title',
+                                'mediaID',
+                                'collection',
                                 'volumeID',
                                 'success',
                                 'containsAudio',
@@ -533,9 +536,8 @@ def cdWorker():
                 # Set up dictionary that holds carrier data
                 carrierData = {}
                 carrierData['jobID'] = jobList[0]
-                carrierData['PPN'] = jobList[1]
-                carrierData['title'] = jobList[2]
-                carrierData['volumeNo'] = jobList[3]
+                carrierData['collection'] = jobList[1]
+                carrierData['mediaID'] = jobList[2]
 
                 # Process the carrier
                 success = processDisc(carrierData)
