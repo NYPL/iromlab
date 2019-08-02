@@ -147,12 +147,8 @@ class carrierEntry(tk.Frame):
             self.bOpen.config(state='disabled')
             self.batch_button.config(state='disabled')
             self.bFinalise.config(state='normal')
-            if config.enablePPNLookup:
-                self.catid_entry.config(state='normal')
-                self.usepreviousPPN_button.config(state='normal')
-            else:
-                self.title_entry.config(state='normal')
-                self.usepreviousTitle_button.config(state='normal')
+            self.title_entry.config(state='normal')
+            self.usepreviousTitle_button.config(state='normal')
             self.volumeNo_entry.config(state='normal')
             self.volumeNo_entry.delete(0, tk.END)
             self.volumeNo_entry.insert(tk.END, "1")
@@ -235,12 +231,8 @@ class carrierEntry(tk.Frame):
                     else:
                         self.bFinalise.config(state='normal')
                         self.submit_button.config(state='normal')
-                    if config.enablePPNLookup:
-                        self.catid_entry.config(state='normal')
-                        self.usepreviousPPN_button.config(state='normal')
-                    else:
-                        self.title_entry.config(state='normal')
-                        self.usepreviousTitle_button.config(state='normal')
+                    self.title_entry.config(state='normal')
+                    self.usepreviousTitle_button.config(state='normal')
                     self.volumeNo_entry.config(state='normal')
                     self.volumeNo_entry.delete(0, tk.END)
                     self.volumeNo_entry.insert(tk.END, "1")
@@ -266,32 +258,14 @@ class carrierEntry(tk.Frame):
             fJob.write(lineOut)
             self.bFinalise.config(state='disabled')
             self.submit_button.config(state='disabled')
-            if config.enablePPNLookup:
-                self.catid_entry.config(state='disabled')
-                self.usepreviousPPN_button.config(state='disabled')
-            else:
-                self.title_entry.config(state='disabled')
-                self.usepreviousTitle_button.config(state='disabled')
+            self.title_entry.config(state='disabled')
+            self.usepreviousTitle_button.config(state='disabled')
             self.volumeNo_entry.delete(0, tk.END)
             self.volumeNo_entry.config(state='disabled')
             
             # If the startOnFinalize option was activated, set readyToStart flag to True
             if config.startOnFinalize:
                 config.readyToStart = True
-
-    def on_usepreviousPPN(self, event=None):
-        """Add previously entered PPN to entry field"""
-        if self.catidOld == "":
-            msg = "Previous PPN is not defined"
-            tkMessageBox.showerror("PPN not defined", msg)
-        else:
-            self.catid_entry.delete(0, tk.END)
-            self.catid_entry.insert(tk.END, self.catidOld)
-            if self.volumeNoOld != "":
-                # Increase volume number value
-                volumeNoNew = str(int(self.volumeNoOld) + 1)
-                self.volumeNo_entry.delete(0, tk.END)
-                self.volumeNo_entry.insert(tk.END, volumeNoNew)
 
     def on_usepreviousTitle(self, event=None):
         """Add previously entered title to title field"""
@@ -312,31 +286,12 @@ class carrierEntry(tk.Frame):
         self.carrierNumber += 1
 
         # Fetch entered values (strip any leading / tralue whitespace characters)
-        if config.enablePPNLookup:
-            catid = self.catid_entry.get().strip()
-            self.catidOld = catid
-        else:
-            catid = ""
-            title = self.title_entry.get().strip()
-            self.titleOld = title
+        catid = ""
+        title = self.title_entry.get().strip()
+        self.titleOld = title
         volumeNo = self.volumeNo_entry.get().strip()
         self.volumeNoOld = volumeNo
 
-        if config.enablePPNLookup:
-            # Check for empty string
-            if str(catid) == '':
-                noGGCRecords = 0
-            else:
-                # Lookup catalog identifier
-                sruSearchString = '"PPN=' + str(catid) + '"'
-                response = sru.search(sruSearchString, "GGC")
-
-                if not response:
-                    noGGCRecords = 0
-                else:
-                    noGGCRecords = response.sru.nr_of_records
-        else:
-            noGGCRecords = 1
 
         if not config.batchIsOpen:
             msg = "You must first create a batch or open an existing batch"
@@ -347,68 +302,37 @@ class carrierEntry(tk.Frame):
         elif int(volumeNo) < 1:
             msg = "Volume number must be greater than or equal to 1"
             tkMessageBox.showerror("Value error", msg)
-        elif noGGCRecords == 0:
-            # No matching record found
-            msg = ("Search for PPN=" + str(catid) + " returned " +
-                   "no matching record in catalog!")
-            tkMessageBox.showerror("PPN not found", msg)
         else:
-            if config.enablePPNLookup:
-                # Matching record found. Display title and ask for confirmation
-                record = next(response.records)
+            msg = ("Please load disc ('" + title + "', volume " + str(volumeNo) +
+                   ") into the disc loader, then press 'OK'")
+            tkMessageBox.showinfo("Load disc", msg)
 
-                # Title can be in either in:
-                # 1. title element
-                # 2. title element with maintitle attribute
-                # 3. title element with intermediatetitle attribute (3 in combination with 2)
+            # Create unique identifier for this job (UUID, based on host ID and current time)
+            jobID = str(uuid.uuid1())
+            # Create and populate Job file
+            jobFile = os.path.join(config.jobsFolder, jobID + ".txt")
 
-                titlesMain = record.titlesMain
-                titlesIntermediate = record.titlesIntermediate
-                titles = record.titles
+            fJob = open(jobFile, "w", encoding="utf-8")
 
-                if titlesMain != []:
-                    title = titlesMain[0]
-                    if titlesIntermediate != []:
-                        title = title + ", " + titlesIntermediate[0]
-                else:
-                    title = titles[0]
+            # Create CSV writer object
+            jobCSV = csv.writer(fJob, lineterminator='\n')
 
-            msg = "Found title:\n\n'" + title + "'.\n\n Is this correct?"
-            if tkMessageBox.askyesno("Confirm", msg):
-                # Prompt operator to insert carrier in disc robot
-                msg = ("Please load disc ('" + title + "', volume " + str(volumeNo) +
-                       ") into the disc loader, then press 'OK'")
-                tkMessageBox.showinfo("Load disc", msg)
+            # Row items to list
+            rowItems = ([jobID, catid, title, volumeNo])
 
-                # Create unique identifier for this job (UUID, based on host ID and current time)
-                jobID = str(uuid.uuid1())
-                # Create and populate Job file
-                jobFile = os.path.join(config.jobsFolder, jobID + ".txt")
+            # Write row to job and close file
+            jobCSV.writerow(rowItems)
+            fJob.close()
 
-                fJob = open(jobFile, "w", encoding="utf-8")
+            # Display Title + Volume number in treeview widget
+            self.tv.insert('', 0, text=str(self.carrierNumber), values=(catid, title, volumeNo))
 
-                # Create CSV writer object
-                jobCSV = csv.writer(fJob, lineterminator='\n')
-
-                # Row items to list
-                rowItems = ([jobID, catid, title, volumeNo])
-
-                # Write row to job and close file
-                jobCSV.writerow(rowItems)
-                fJob.close()
-
-                # Display PPN/Title + Volume number in treeview widget
-                self.tv.insert('', 0, text=str(self.carrierNumber), values=(catid, title, volumeNo))
-
-                # Reset entry fields and set focus on PPN / Title field
-                if config.enablePPNLookup:
-                    self.catid_entry.delete(0, tk.END)
-                    self.catid_entry.focus_set()
-                else:
-                    self.title_entry.delete(0, tk.END)
-                    self.title_entry.focus_set()
-                self.volumeNo_entry.delete(0, tk.END)
-                self.volumeNo_entry.insert(tk.END, "1")
+            # Reset entry fields and set focus on Title field
+            else:
+                self.title_entry.delete(0, tk.END)
+                self.title_entry.focus_set()
+            self.volumeNo_entry.delete(0, tk.END)
+            self.volumeNo_entry.insert(tk.END, "1")
 
     def setupLogger(self):
         """Set up logging-related settings"""
@@ -610,47 +534,9 @@ class carrierEntry(tk.Frame):
         self.bFinalise.config(state='disabled')
         self.bExit.config(state='normal')
         self.submit_button.config(state='disabled')
-        if config.enablePPNLookup:
-            self.catid_entry.config(state='disabled')
-            self.usepreviousPPN_button.config(state='disabled')
-        else:
-            self.title_entry.config(state='disabled')
-            self.usepreviousTitle_button.config(state='disabled')
+        self.title_entry.config(state='disabled')
+        self.usepreviousTitle_button.config(state='disabled')
         self.volumeNo_entry.config(state='disabled')
-
-    def handleSocketRequests(self, q):
-        """ Update contents of PPN and Title widgets on incoming requests from socket interface
-        """
-        try:
-            message = q.get_nowait()
-            if config.enablePPNLookup:
-                try:
-                    catid = message
-                    self.catid_entry.delete(0, tk.END)
-                    self.catid_entry.insert(tk.END, catid)
-                    if catid == self.catidOld and catid != "":
-                        # Increase volume number value if existing catid
-                        volumeNoNew = str(int(self.volumeNoOld) + 1)
-                        self.volumeNo_entry.delete(0, tk.END)
-                        self.volumeNo_entry.insert(tk.END, volumeNoNew)
-                except:
-                    # TODO: catch more specific errors here?
-                    pass
-            else:
-                try:
-                    title = message
-                    self.title_entry.delete(0, tk.END)
-                    self.title_entry.insert(tk.END, title)
-                    if title == self.titleOld and title != "":
-                        # Increase volume number value if existing catid
-                        volumeNoNew = str(int(self.volumeNoOld) + 1)
-                        self.volumeNo_entry.delete(0, tk.END)
-                        self.volumeNo_entry.insert(tk.END, volumeNoNew)
-                except:
-                    # TODO: catch more specific errors here?
-                    pass
-        except queue.Empty:
-            pass
 
 class QueueHandler(logging.Handler):
     """Class to send logging records to a queue
@@ -790,13 +676,6 @@ def getConfiguration():
         pass
     try:
         config.socketPort = findElementText(configElt, './config/socketPort')
-    except:
-        pass
-    try:
-        if findElementText(configElt, './config/enablePPNLookup') == "True":
-            config.enablePPNLookup = True
-        else:
-            config.enablePPNLookup = False
     except:
         pass
     try:
