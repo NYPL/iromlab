@@ -86,7 +86,7 @@ class carrierEntry(tk.Frame):
         self.bNew.config(state='disabled')
         self.bOpen.config(state='disabled')
         self.batch_button.config(state='normal')
-        self.batchTypes.config(state='normal')
+        self.batchTypeMenu.config(state='normal')
         self.coll_entry.config(state='normal')
         self.coll_entry.focus_set()
         self.staff_name.config(state='normal')
@@ -94,69 +94,78 @@ class carrierEntry(tk.Frame):
 
     def on_batchinfo(self, event=None):
 
-        # Construct batch name
-        batchName = self.coll_entry.get().strip() + '-' + self.batchID
-        config.batchFolder = os.path.join(config.rootDir, batchName)
-        try:
-            os.makedirs(config.batchFolder)
-        except IOError:
-            msg = 'Cannot create batch folder ' + config.batchFolder
+        if not (self.coll_entry.get()[0] == 'M') and not representsInt(self.coll_entry.get()[1:]):
+            msg = "Collection ID should be M#####"
             tkMessageBox.showerror("Error", msg)
+            self.on_create()
+        elif not self.staff_name.get():
+            msg = "Please fill in the Staff Name field"
+            tkMessageBox.showerror("Error mismatch", msg)
+            self.on_create()
+        else:
+            # Construct batch name
+            self.batchName = self.coll_entry.get().strip() + '-' + self.batchID
+            config.batchFolder = os.path.join(config.rootDir, self.batchName)
+            try:
+                os.makedirs(config.batchFolder)
+            except IOError:
+                msg = 'Cannot create batch folder ' + config.batchFolder
+                tkMessageBox.showerror("Error", msg)
 
-        # Create jobs folder
-        config.jobsFolder = os.path.join(config.batchFolder, 'jobs')
-        try:
-            os.makedirs(config.jobsFolder)
-        except IOError:
-            msg = 'Cannot create jobs folder ' + config.jobsFolder
-            tkMessageBox.showerror("Error", msg)
+            # Create jobs folder
+            config.jobsFolder = os.path.join(config.batchFolder, 'jobs')
+            try:
+                os.makedirs(config.jobsFolder)
+            except IOError:
+                msg = 'Cannot create jobs folder ' + config.jobsFolder
+                tkMessageBox.showerror("Error", msg)
 
-        # Create failed jobs folder (if a job fails it will be moved here)
-        config.jobsFailedFolder = os.path.join(config.batchFolder, 'jobsFailed')
-        try:
-            os.makedirs(config.jobsFailedFolder)
-        except IOError:
-            msg = 'Cannot create failed jobs folder ' + config.jobsFailedFolder
-            tkMessageBox.showerror("Error", msg)
+            # Create failed jobs folder (if a job fails it will be moved here)
+            config.jobsFailedFolder = os.path.join(config.batchFolder, 'jobsFailed')
+            try:
+                os.makedirs(config.jobsFailedFolder)
+            except IOError:
+                msg = 'Cannot create failed jobs folder ' + config.jobsFailedFolder
+                tkMessageBox.showerror("Error", msg)
 
-        # Set up logging
-        successLogger = True
+            # Set up logging
+            successLogger = True
 
-        try:
-            self.setupLogger()
-            # Start polling log messages from the queue
-            self.after(100, self.poll_log_queue)
-        except OSError:
-            # Something went wrong while trying to write to lof file
-            msg = ('error trying to write log file')
-            tkMessageBox.showerror("ERROR", msg)
-            successLogger = False
+            try:
+                self.setupLogger()
+                # Start polling log messages from the queue
+                self.after(100, self.poll_log_queue)
+            except OSError:
+                # Something went wrong while trying to write to lof file
+                msg = ('error trying to write log file')
+                tkMessageBox.showerror("ERROR", msg)
+                successLogger = False
 
-        if successLogger:
-            # Notify user
-            msg = 'Created batch ' + batchName
-            tkMessageBox.showinfo("Created batch", msg)
-            logging.info(''.join(['batchFolder set to ', config.batchFolder]))
+            if successLogger:
+                # Notify user
+                msg = 'Created batch ' + self.batchName
+                tkMessageBox.showinfo("Created batch", msg)
+                logging.info(''.join(['batchFolder set to ', config.batchFolder]))
 
-            # Update state of buttons / widgets
-            self.bNew.config(state='disabled')
-            self.bOpen.config(state='disabled')
-            self.batch_button.config(state='disabled')
-            self.batchTypes.config(state='disabled')
-            self.coll_entry.config(state='disabled')
-            self.staff_entry.config(state='disabled')
-            self.bFinalise.config(state='normal')
-            self.media_entry.config(state='normal')
-            self.media_entry.delete(0, tk.END)
-            self.media_entry.insert(tk.END, "1")
-            self.submit_button.config(state='normal')
+                # Update state of buttons / widgets
+                self.bNew.config(state='disabled')
+                self.bOpen.config(state='disabled')
+                self.batch_button.config(state='disabled')
+                self.batchTypeMenu.config(state='disabled')
+                self.coll_entry.config(state='disabled')
+                self.staff_name.config(state='disabled')
+                self.bFinalise.config(state='normal')
+                self.media_entry.config(state='normal')
+                self.media_entry.delete(0, tk.END)
+                self.media_entry.insert(tk.END, "1")
+                self.submit_button.config(state='normal')
 
-            # Flag that is True if batch is open
-            config.batchIsOpen = True
-            # Set readyToStart flag to True, except if startOnFinalize flag is activated,
-            # in which case readyToStart is set to True on finalisation
-            if not config.startOnFinalize:
-                config.readyToStart = True
+                # Flag that is True if batch is open
+                config.batchIsOpen = True
+                # Set readyToStart flag to True, except if startOnFinalize flag is activated,
+                # in which case readyToStart is set to True on finalisation
+                if not config.startOnFinalize:
+                    config.readyToStart = True
 
 
     def on_open(self, event=None):
@@ -221,9 +230,9 @@ class carrierEntry(tk.Frame):
                     self.bNew.config(state='disabled')
                     self.bOpen.config(state='disabled')
                     self.batch_button.config(state='disabled')
-                    self.batchTypes.config(state='disabled')
+                    self.batchTypeMenu.config(state='disabled')
                     self.coll_entry.config(state='disabled')
-                    self.staff_entry.config(state='disabled')
+                    self.staff_name.config(state='disabled')
                     if os.path.isfile(os.path.join(config.jobsFolder, 'eob.txt')):
                         self.bFinalise.config(state='disabled')
                         self.submit_button.config(state='disabled')
@@ -255,8 +264,6 @@ class carrierEntry(tk.Frame):
             fJob.write(lineOut)
             self.bFinalise.config(state='disabled')
             self.submit_button.config(state='disabled')
-            self.coll_entry.config(state='disabled')
-            self.submit_button.config(state='disabled')
             self.media_entry.delete(0, tk.END)
             self.media_entry.config(state='disabled')
             
@@ -266,14 +273,11 @@ class carrierEntry(tk.Frame):
 
     def on_submit(self, event=None):
         """Process one record and add it to the queue after user pressed submit button"""
-
-        self.carrierNumber += 1
-
         # Fetch entered values (strip any leading / tralue whitespace characters)
         self.current_coll = self.coll_entry.get().strip() 
         self.current_media_entry = self.media_entry.get().strip()
 
-        self.current_media_id = self.coll_entry.get().strip() + '_' + self.mediaOld.zfill(4)
+        self.current_media_id = self.coll_entry.get().strip() + '_' + self.current_media_entry.zfill(4)
 
 
         if not config.batchIsOpen:
@@ -308,6 +312,7 @@ class carrierEntry(tk.Frame):
             fJob.close()
 
             # Display Title + Volume number in treeview widget
+            self.carrierNumber += 1
             self.tv.insert('', 0, text=str(self.carrierNumber), values=(self.current_media_id, 'queued'))
 
             # Reset entry fields and set focus on Title field
@@ -412,15 +417,16 @@ class carrierEntry(tk.Frame):
 
         # Batch info fields
         batchTypes = { 'Bags' , 'Disc Images' }
-        tk.Label(self, text="Batch Type").grid(column = 0, row = 3, sticky='w')
-        self.batchTypeMenu = tk.OptionMenu(self, 'Bags', *batchTypes)
-        self.batchTypeMenu.grid(column =1, row = 3, sticky='ew', columnspan=3)
+        self.batchType = tk.StringVar(self, 'Bags')
+        tk.Label(self, text='Batch Type').grid(column = 0, row = 3, sticky='w')
+        self.batchTypeMenu = tk.OptionMenu(self, self.batchType, *batchTypes)
+        self.batchTypeMenu.grid(column =1, row = 3, sticky='ew', columnspan=2)
 
         tk.Label(self, text='Collection ID').grid(column=0, row=4, sticky='w')
         self.coll_entry = tk.Entry(self, width=45, state='disabled')
         self.coll_entry.grid(column=1, row=4, sticky='w', columnspan=3)
         
-        tk.Label(self, text='Staff').grid(column=0, row=5, sticky='w')
+        tk.Label(self, text='Staff Name').grid(column=0, row=5, sticky='w')
         self.staff_name = tk.Entry(self, width=45, state='disabled')
         self.staff_name.grid(column=1, row=5, sticky='w', columnspan=3)
 
@@ -513,7 +519,7 @@ class carrierEntry(tk.Frame):
         self.bExit.config(state='normal')
         self.batchTypes.config(state='disabled')
         self.coll_entry.config(state='disabled')
-        self.staff_entry.config(state='disabled')
+        self.staff_name.config(state='disabled')
         self.submit_button.config(state='disabled')
         self.media_entry.config(state='disabled')
 
