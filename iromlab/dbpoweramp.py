@@ -15,12 +15,13 @@ def consoleRipper(writeDirectory):
     # NOTE: logFile doesn't offer anything that's not in the secure extraction log
     # So it is simply discarded after ripping
     logFile = os.path.join(config.tempDir, shared.randomString(12) + ".log")
-    secureExtractionLogFile = os.path.join(writeDirectory, "dbpoweramp.log")
+    contentsPath = os.path.join(writeDirectory, "objects")
+    secureExtractionLogFile = os.path.join(writeDirectory, "metadata", "dbpoweramp.log")
 
     args = [config.dBpowerampConsoleRipExe]
     args.append("".join(["--drive=", config.cdDriveLetter]))
     args.append("".join(["--log=", logFile]))
-    args.append("".join(["--path=", writeDirectory]))
+    args.append("".join(["--path=", contentsPath]))
 
     # Command line as string (used for logging purposes only)
     cmdStr = " ".join(args)
