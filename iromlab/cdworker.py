@@ -104,12 +104,6 @@ def checksumDirectory(directory):
 def processDisc(carrierData):
     """Process one disc / job"""
 
-    jobID = carrierData['jobID']
-
-    logging.info(''.join(['### Job identifier: ', jobID]))
-    logging.info(''.join(['Collection: ', carrierData['collID']]))
-    logging.info(''.join(['Media ID: ', carrierData['mediaID']]))
-
     # Initialise reject and success status
     reject = False
     success = True
@@ -120,6 +114,20 @@ def processDisc(carrierData):
     if not os.path.exists(dirDisc):
         os.makedirs(os.path.join(dirDisc, 'objects'))
         os.makedirs(os.path.join(dirDisc, 'metadata'))
+
+    # Create log for disc work
+    logFile = os.path.join(dirDisc, 'metadata', 'transfer.log')
+
+    discLog = logging.FileHandler(logFile, 'a', 'utf-8')
+    discLog.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger = logging.getLogger()
+    logger.addHandler(discLog)
+
+    jobID = carrierData['jobID']
+
+    logging.info(''.join(['### Job identifier: ', jobID]))
+    logging.info(''.join(['Collection: ', carrierData['collID']]))
+    logging.info(''.join(['Media ID: ', carrierData['mediaID']]))
 
     # Load disc
     logging.info('*** Loading disc ***')
@@ -240,6 +248,8 @@ def processDisc(carrierData):
     # Write row to batch manifest and close file
     csvBm.writerow(rowBatchManifest)
     bm.close()
+    logger.removeHandler(discLog)
+
     return success
 
 
