@@ -127,8 +127,8 @@ def extractCdiData(writeDirectory):
 
     # Temporary name for image file; base name
     isoFileTemp = os.path.join(writeDirectory, "objects", "disc.bin")
-    logFile = os.path.join(writeDirectory, "logs", "isobuster.log")
-    reportFile = os.path.join(writeDirectory, "logs", "isobuster-report.xml")
+    logFile = os.path.join(writeDirectory, "metadata", "isobuster.log")
+    reportFile = os.path.join(writeDirectory, "metadata", "isobuster-report.xml")
     
     # Format string that defines DFXML output report
     reportFormatString = config.reportFormatString
