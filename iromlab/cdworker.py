@@ -14,13 +14,14 @@ import logging
 import pythoncom
 import wmi
 import _thread as thread
+from datetime import datetime
 from . import config
 from . import drivers
 from . import cdinfo
 from . import isobuster
 from . import dbpoweramp
 from . import verifyaudio
-from . import mdo
+from . import discbag
 
 def mediumLoaded(driveName):
     """Returns True if medium is loaded (also if blank/unredable), False if not"""
@@ -104,22 +105,21 @@ def processDisc(carrierData):
     """Process one disc / job"""
 
     jobID = carrierData['jobID']
-    PPN = carrierData['PPN']
 
     logging.info(''.join(['### Job identifier: ', jobID]))
-    logging.info(''.join(['PPN: ', carrierData['PPN']]))
-    logging.info(''.join(['Title: ', carrierData['title']]))
-    logging.info(''.join(['Volume number: ', carrierData['volumeNo']]))
+    logging.info(''.join(['Collection: ', carrierData['collID']]))
+    logging.info(''.join(['Media ID: ', carrierData['mediaID']]))
 
     # Initialise reject and success status
     reject = False
     success = True
 
     # Create output folder for this disc
-    dirDisc = os.path.join(config.batchFolder, jobID)
+    dirDisc = os.path.join(config.batchFolder, carrierData['mediaID'])
     logging.info(''.join(['disc directory: ', dirDisc]))
     if not os.path.exists(dirDisc):
-        os.makedirs(dirDisc)
+        os.makedirs(os.path.join(dirDisc, 'objects'))
+        os.makedirs(os.path.join(dirDisc, 'metadata'))
 
     # Load disc
     logging.info('*** Loading disc ***')
@@ -189,151 +189,12 @@ def processDisc(carrierData):
         logging.info(''.join(['cdInteractive: ', str(carrierInfo['cdInteractive'])]))
         logging.info(''.join(['multiSession: ', str(carrierInfo['multiSession'])]))
 
-        # Assumptions in below workflow:
-        # 1. Audio tracks are always part of 1st session
-        # 2. If disc is of CD-Extra type, there's one data track on the 2nd session
-        if carrierInfo["containsAudio"]:
-            logging.info('*** Ripping audio ***')
-            # Rip audio using dBpoweramp console ripper
-            resultdBpoweramp = dbpoweramp.consoleRipper(dirDisc)
-            statusdBpoweramp = str(resultdBpoweramp["status"])
-            logdBpoweramp = resultdBpoweramp["log"]
-            # secureExtractionLog = resultdBpoweramp["secureExtractionLog"]
+        if config.batchType == 'Bags':
+            success, reject = bagDisc(dirDisc, carrierInfo)
+        elif config.batchType == 'Disc Images':
+            success, reject = imageDisc(dirDisc, carrierInfo)
 
-            if statusdBpoweramp != "0":
-                success = False
-                reject = True
-                logging.error("dBpoweramp exited with error(s)")
-
-            logging.info(''.join(['dBpoweramp command: ', resultdBpoweramp['cmdStr']]))
-            logging.info(''.join(['dBpoweramp-status: ', str(resultdBpoweramp['status'])]))
-            logging.info("dBpoweramp log:\n" + logdBpoweramp)
-
-            # Verify that created audio files are not corrupt (using shntool / flac)
-            logging.info('*** Verifying audio ***')
-            audioHasErrors, audioErrorsList = verifyaudio.verifyCD(dirDisc, config.audioFormat)
-            logging.info(''.join(['audioHasErrors: ', str(audioHasErrors)]))
-
-            if audioHasErrors:
-                success = False
-                reject = True
-                logging.error("Verification of audio files resulted in error(s)")
-
-            # TODO perhaps indent this block if we only want this in case of actual errors?
-            logging.info("Output of audio verification:")
-            for audioFile in audioErrorsList:
-                for item in audioFile:
-                    logging.info(item)
-
-            if carrierInfo["containsData"]:
-                if carrierInfo["cdExtra"]:
-                    logging.info('*** Extracting data session of cdExtra to ISO ***')
-                    # Create ISO file from data on 2nd session
-                    dataTrackLSNStart = int(carrierInfo['dataTrackLSNStart'])
-                    resultIsoBuster = isobuster.extractData(dirDisc, 2, dataTrackLSNStart)
-                elif carrierInfo["mixedMode"]:
-                    logging.info('*** Extracting data session of mixedMode disc to ISO ***')
-                    dataTrackLSNStart = int(carrierInfo['dataTrackLSNStart'])
-                    resultIsoBuster = isobuster.extractData(dirDisc, 1, dataTrackLSNStart)
-
-                statusIsoBuster = resultIsoBuster["log"].strip()
-                isolyzerSuccess = resultIsoBuster['isolyzerSuccess']
-                imageTruncated = resultIsoBuster['imageTruncated']
-
-                if statusIsoBuster != "0":
-                    success = False
-                    reject = True
-                    logging.error("Isobuster exited with error(s)")
-
-                elif not isolyzerSuccess:
-                    success = False
-                    reject = True
-                    logging.error("Isolyzer exited with error(s)")
-
-                elif imageTruncated:
-                    success = False
-                    reject = True
-                    logging.error("Isolyzer detected truncated ISO image")
-
-                logging.info(''.join(['isobuster command: ', resultIsoBuster['cmdStr']]))
-                logging.info(''.join(['isobuster-status: ', str(resultIsoBuster['status'])]))
-                logging.info(''.join(['isobuster-log: ', statusIsoBuster]))
-                logging.info(''.join(['volumeIdentifier: ',
-                                      str(resultIsoBuster['volumeIdentifier'])]))
-                logging.info(''.join(['isolyzerSuccess: ', str(isolyzerSuccess)]))
-                logging.info(''.join(['imageTruncated: ', str(imageTruncated)]))
-
-        elif carrierInfo["containsData"] and not carrierInfo["cdInteractive"]:
-            logging.info('*** Extracting data session to ISO ***')
-            # Create ISO image of first session
-            resultIsoBuster = isobuster.extractData(dirDisc, 1, 0)
-
-            statusIsoBuster = resultIsoBuster["log"].strip()
-            isolyzerSuccess = resultIsoBuster['isolyzerSuccess']
-            imageTruncated = resultIsoBuster['imageTruncated']
-
-            if statusIsoBuster != "0":
-                success = False
-                reject = True
-                logging.error("Isobuster exited with error(s)")
-
-            elif not isolyzerSuccess:
-                success = False
-                reject = True
-                logging.error("Isolyzer exited with error(s)")
-
-            elif imageTruncated:
-                success = False
-                reject = True
-                logging.error("Isolyzer detected truncated ISO image")
-
-            logging.info(''.join(['isobuster command: ', resultIsoBuster['cmdStr']]))
-            logging.info(''.join(['isobuster-status: ', str(resultIsoBuster['status'])]))
-            logging.info(''.join(['isobuster-log: ', statusIsoBuster]))
-            logging.info(''.join(['volumeIdentifier: ', str(resultIsoBuster['volumeIdentifier'])]))
-            logging.info(''.join(['isolyzerSuccess: ', str(isolyzerSuccess)]))
-            logging.info(''.join(['imageTruncated: ', str(imageTruncated)]))
-
-        elif carrierInfo["cdInteractive"]:
-            logging.info('*** Extracting data from CD Interactive to raw image file ***')
-            resultIsoBuster = isobuster.extractCdiData(dirDisc)
-            statusIsoBuster = resultIsoBuster["log"].strip()
-
-            if statusIsoBuster != "0":
-                success = False
-                reject = True
-                logging.error("Isobuster exited with error(s)")
-
-            logging.info(''.join(['isobuster command: ', resultIsoBuster['cmdStr']]))
-            logging.info(''.join(['isobuster-status: ', str(resultIsoBuster['status'])]))
-            logging.info(''.join(['isobuster-log: ', statusIsoBuster]))
-        
-        else:
-            # We end up here if cd-info wasn't able to identify the disc
-            success = False
-            reject = True
-            logging.error("Unable to identify disc type")
-
-        if config.enablePPNLookup:
-            # Fetch metadata from KBMDO and store as file
-            logging.info('*** Writing metadata from KB-MDO to file ***')
-
-            successMdoWrite = mdo.writeMDORecord(PPN, dirDisc)
-            if not successMdoWrite:
-                success = False
-                reject = True
-                logging.error("Could not write metadata from KB-MDO")
-
-        # Generate checksum file
-        logging.info('*** Computing checksums ***')
-        successChecksum = checksumDirectory(dirDisc)
-
-        if not successChecksum:
-            success = False
-            reject = True
-            logging.error("Writing of checksum file resulted in an error")
-
-        # Unload or reject disc
+    # Unload or reject disc
         if not reject:
             logging.info('*** Unloading disc ***')
             resultUnload = drivers.unload()
@@ -358,10 +219,11 @@ def processDisc(carrierData):
 
     # Put all items for batch manifest entry in a list
     rowBatchManifest = ([jobID,
-                         carrierData['PPN'],
-                         carrierData['volumeNo'],
-                         carrierData['title'],
+                         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                         carrierData['collID'],
+                         carrierData['mediaID'],
                          volumeID,
+                         config.staffName,
                          str(success),
                          str(carrierInfo['containsAudio']),
                          str(carrierInfo['containsData']),
@@ -381,15 +243,173 @@ def processDisc(carrierData):
     return success
 
 
+def bagDisc(dirDisc, carrierInfo):
+    # Assumption in below workflow:
+    # Only bag data-only discs
+
+    success = True
+    reject = False
+
+    if (carrierInfo["containsAudio"] or carrierInfo["cdExtra"] or carrierInfo["mixedMode"] or
+        carrierInfo["cdInteractive"] or os.path.exists(config.cdDriveLetter + ":\\AUDIO_TS")):
+
+        logging.info('*** Not bagging. Rejecting disc for later imaging. ***')
+        success = False
+        reject = True
+
+    else:
+        logging.info('*** Bagging data on disc ***')
+        success, reject = discbag.extractData(dirDisc)
+
+    if reject:
+        logging.info('*** Deleting disc files ***')
+        shutil.rmtree(dirDisc)
+
+        ### report data bagged
+
+    return success, reject
+
+
+def imageDisc(dirDisc, carrierInfo):
+    # Assumptions in below workflow:
+    # 1. Audio tracks are always part of 1st session
+    # 2. If disc is of CD-Extra type, there's one data track on the 2nd session
+
+    success = True
+    reject = False
+
+    if carrierInfo["containsAudio"]:
+        logging.info('*** Ripping audio ***')
+        success, reject = processCDAudio(dirDisc)
+
+        if carrierInfo["containsData"]:
+            if carrierInfo["cdExtra"]:
+                logging.info('*** Extracting data session of cdExtra to ISO ***')
+                # Create ISO file from data on 2nd session
+                success, reject = processISODiscImage(dirDisc, 2, int(carrierInfo['dataTrackLSNStart']))
+
+            elif carrierInfo["mixedMode"]:
+                logging.info('*** Extracting data session of mixedMode disc to ISO ***')
+                success, reject = processISODiscImage(dirDisc, 1, int(carrierInfo['dataTrackLSNStart']))
+
+    elif carrierInfo["containsData"] and not carrierInfo["cdInteractive"]:
+        logging.info('*** Extracting data session to ISO ***')
+        success, reject = processISODiscImage(dirDisc, 1, 0)
+
+    elif carrierInfo["cdInteractive"]:
+        logging.info('*** Extracting data from CD Interactive to raw image file ***')
+        success, reject = processRawDiscImage(dirDisc, 2, int(carrierInfo['dataTrackLSNStart']))
+
+    else:
+        # We end up here if cd-info wasn't able to identify the disc
+        success = False
+        reject = True
+        logging.error("Unable to identify disc type")
+
+    # Generate checksum file
+    logging.info('*** Computing checksums ***')
+    successChecksum = checksumDirectory(dirDisc)
+
+    if not successChecksum:
+        success = False
+        reject = True
+        logging.error("Writing of checksum file resulted in an error")
+
+    return success, reject
+
+
+def processCDAudio(dirDisc):
+    logging.info('*** Ripping audio ***')
+    # Rip audio using dBpoweramp console ripper
+    resultdBpoweramp = dbpoweramp.consoleRipper(dirDisc)
+    statusdBpoweramp = str(resultdBpoweramp["status"])
+    logdBpoweramp = resultdBpoweramp["log"]
+    # secureExtractionLog = resultdBpoweramp["secureExtractionLog"]
+
+    if statusdBpoweramp != "0":
+        success = False
+        reject = True
+        logging.error("dBpoweramp exited with error(s)")
+
+    logging.info(''.join(['dBpoweramp command: ', resultdBpoweramp['cmdStr']]))
+    logging.info(''.join(['dBpoweramp-status: ', str(resultdBpoweramp['status'])]))
+    logging.info("dBpoweramp log:\n" + logdBpoweramp)
+
+    # Verify that created audio files are not corrupt (using shntool / flac)
+    logging.info('*** Verifying audio ***')
+    audioHasErrors, audioErrorsList = verifyaudio.verifyCD(dirDisc, config.audioFormat)
+    logging.info(''.join(['audioHasErrors: ', str(audioHasErrors)]))
+
+    if audioHasErrors:
+        success = False
+        reject = True
+        logging.error("Verification of audio files resulted in error(s)")
+
+    # TODO perhaps indent this block if we only want this in case of actual errors?
+    logging.info("Output of audio verification:")
+    for audioFile in audioErrorsList:
+        for item in audioFile:
+            logging.info(item)
+
+    return success, reject
+
+
+def processISODiscImage(dirDisc, session, trackStart):
+    resultIsoBuster = isobuster.extractData(dirDisc, session, trackStart)
+
+    statusIsoBuster = resultIsoBuster["log"].strip()
+    isolyzerSuccess = resultIsoBuster['isolyzerSuccess']
+    imageTruncated = resultIsoBuster['imageTruncated']
+
+    if statusIsoBuster != "0":
+        success = False
+        reject = True
+        logging.error("Isobuster exited with error(s)")
+
+    elif not isolyzerSuccess:
+        success = False
+        reject = True
+        logging.error("Isolyzer exited with error(s)")
+
+    elif imageTruncated:
+        success = False
+        reject = True
+        logging.error("Isolyzer detected truncated ISO image")
+
+    logging.info(''.join(['isobuster command: ', resultIsoBuster['cmdStr']]))
+    logging.info(''.join(['isobuster-status: ', str(resultIsoBuster['status'])]))
+    logging.info(''.join(['isobuster-log: ', statusIsoBuster]))
+    logging.info(''.join(['volumeIdentifier: ', str(resultIsoBuster['volumeIdentifier'])]))
+    logging.info(''.join(['isolyzerSuccess: ', str(isolyzerSuccess)]))
+    logging.info(''.join(['imageTruncated: ', str(imageTruncated)]))
+
+    return reject
+
+
+def processRawDiscImage(dirdisc):
+    resultIsoBuster = isobuster.extractCdiData(dirDisc)
+    statusIsoBuster = resultIsoBuster["log"].strip()
+
+    if statusIsoBuster != "0":
+        success = False
+        reject = True
+        logging.error("Isobuster exited with error(s)")
+
+    logging.info(''.join(['isobuster command: ', resultIsoBuster['cmdStr']]))
+    logging.info(''.join(['isobuster-status: ', str(resultIsoBuster['status'])]))
+    logging.info(''.join(['isobuster-log: ', statusIsoBuster]))
+
+    return success, reject
+
+
 def processDiscTest(carrierData):
     """Dummy version of processDisc function that doesn't do any actual imaging
     used for testing only
     """
     jobID = carrierData['jobID']
     logging.info(''.join(['### Job identifier: ', jobID]))
-    logging.info(''.join(['PPN: ', carrierData['PPN']]))
-    logging.info(''.join(['Title: ', carrierData['title']]))
-    logging.info(''.join(['Volume number: ', carrierData['volumeNo']]))
+    logging.info(''.join(['Collection: ', carrierData['collID']]))
+    logging.info(''.join(['Media ID: ', carrierData['mediaID']]))
 
     # Create dummy carrierInfo dictionary (values are needed for batch manifest)
     carrierInfo = {}
@@ -407,9 +427,8 @@ def processDiscTest(carrierData):
     # Put all items for batch manifest entry in a list
 
     rowBatchManifest = ([jobID,
-                         carrierData['PPN'],
-                         carrierData['volumeNo'],
-                         carrierData['title'],
+                         carrierData['collID'],
+                         carrierData['mediaID'],
                          volumeID,
                          str(success),
                          str(carrierInfo['containsAudio']),
@@ -455,15 +474,16 @@ def cdWorker():
         vf.write(config.version + '\n')
 
     # Define batch manifest (CSV file with minimal metadata on each carrier)
-    config.batchManifest = os.path.join(config.batchFolder, 'manifest.csv')
+    config.batchManifest = os.path.join(config.batchFolder, 'manifest-' + config.batchName + '.csv')
 
     # Write header row if batch manifest doesn't exist already
     if not os.path.isfile(config.batchManifest):
         headerBatchManifest = (['jobID',
-                                'PPN',
-                                'volumeNo',
-                                'title',
+                                'dateTime'
+                                'collection',
+                                'mediaID',
                                 'volumeID',
+                                'staffName'
                                 'success',
                                 'containsAudio',
                                 'containsData',
@@ -533,9 +553,8 @@ def cdWorker():
                 # Set up dictionary that holds carrier data
                 carrierData = {}
                 carrierData['jobID'] = jobList[0]
-                carrierData['PPN'] = jobList[1]
-                carrierData['title'] = jobList[2]
-                carrierData['volumeNo'] = jobList[3]
+                carrierData['collID'] = jobList[1]
+                carrierData['mediaID'] = jobList[2]
 
                 # Process the carrier
                 success = processDisc(carrierData)
