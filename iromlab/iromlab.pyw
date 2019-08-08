@@ -327,22 +327,23 @@ class carrierEntry(tk.Frame):
 
     def update_treeview(self):
         """Update interface with completion/fail"""
-        queued = [x.split('.')[0] for x in os.listdir(config.jobsFailedFolder)]
-        failed = [x.split('-')[0] for x in os.listdir(config.jobsFolder)]
-        for item in self.tv.get_children():
-            media_id = self.tv.item(item)["text"]
-            values = self.tv.item(item)["values"]
-            
-            if values[1] != 'queued' or media_id in queued:
-                continue
+        tv_items = self.tv.get_children()
+        if tv_items:
+            failed = [x.split('.')[0] for x in os.listdir(config.jobsFailedFolder)]
+            queued = [x.split('-')[0] for x in os.listdir(config.jobsFolder)]
+            for item in tv_items:
+                media_id = self.tv.item(item)["text"]
+                values = self.tv.item(item)["values"]
 
-            if media_id in failed:
-                status = 'failed'
-            else:
-                status = 'completed'
+                if media_id in queued:
+                    status = 'queued'
+                elif media_id in failed:
+                    status = 'failed'
+                else:
+                    status = 'completed'
 
-            values[1] = status
-            self.tv.item(item, values = values)
+                values[1] = status
+                self.tv.item(item, values = values)
 
 
     def setupLogger(self):
