@@ -301,7 +301,7 @@ class carrierEntry(tk.Frame):
             # Create unique identifier for this job (UUID, based on host ID and current time)
             jobID = str(uuid.uuid1())
             # Create and populate Job file
-            jobFile = os.path.join(config.jobsFolder, jobID + ".txt")
+            jobFile = os.path.join(config.jobsFolder, self.current_media_id + '-' + jobID + ".txt")
 
             fJob = open(jobFile, "w", encoding="utf-8")
 
@@ -317,12 +317,33 @@ class carrierEntry(tk.Frame):
 
             # Display Title + Volume number in treeview widget
             self.carrierNumber += 1
-            self.tv.insert('', 0, text=str(self.carrierNumber), values=(self.current_media_id, 'queued'))
+            self.tv.insert('', 0, text=str(self.current_media_id), values=(self.carrierNumber, 'queued'))
 
             # Reset entry fields and set focus on Title field
             self.media_entry.delete(0, tk.END)
             self.media_entry.insert(tk.END, int(self.current_media_entry) + 1)
             self.media_entry.focus_set()
+
+
+    def update_treeview(self):
+        """Update interface with completion/fail"""
+        queued = [x.split('.')[0] for x in os.listdir(config.jobsFailedFolder)]
+        failed = [x.split('-')[0] for x in os.listdir(config.jobsFolder)]
+        for item in self.tv.get_children():
+            media_id = self.tv.item(item)["text"]
+            values = self.tv.item(item)["values"]
+            
+            if values[1] != 'queued' or media_id in queued:
+                continue
+
+            if media_id in failed:
+                status = 'failed'
+            else:
+                status = 'completed'
+
+            values[1] = status
+            self.tv.item(item, values = values)
+
 
     def setupLogger(self):
         """Set up logging-related settings"""
@@ -448,7 +469,7 @@ class carrierEntry(tk.Frame):
         ttk.Separator(self, orient='horizontal').grid(column=0, row=7, columnspan=4, sticky='ew')
 
         # Disc entry
-        tk.Label(self, text='Media ID').grid(column=0, row=8, sticky='w')
+        tk.Label(self, text='Media ID Number').grid(column=0, row=8, sticky='w')
         self.media_entry = tk.Entry(self, width=5, state='disabled')
         self.media_entry.grid(column=1, row=8, sticky='w', columnspan=2)
 
@@ -470,11 +491,11 @@ class carrierEntry(tk.Frame):
             self,
             height=10,
             columns=('Discs in queue'))
-        self.tv.heading('#0', text='Queue')
-        self.tv.heading('#1', text='Media ID')
+        self.tv.heading('#0', text='Media ID')
+        self.tv.heading('#1', text='Number in Queue')
         self.tv.heading('#2', text='Status')
-        self.tv.column('#0', stretch=tk.YES, width=5)
-        self.tv.column('#1', stretch=tk.YES, width=250)
+        self.tv.column('#0', stretch=tk.YES, width=50)
+        self.tv.column('#1', stretch=tk.YES, width=25)
         self.tv.column('#2', stretch=tk.YES, width=50)
         self.tv.grid(column=0, row=11, sticky='ew', columnspan=4)
 
@@ -721,6 +742,7 @@ def main():
 
     while True:
         try:
+            myCarrierEntry.update_treeview()
             root.update_idletasks()
             root.update()
             time.sleep(0.1)
