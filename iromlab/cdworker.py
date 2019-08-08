@@ -78,7 +78,7 @@ def countFiles(directory):
     """Calculate byte and file count for all files in directory"""
 
     allFiles = glob.glob(directory + "/*")
-    counts = {'byte_count': 0, 'file_count' = 0}
+    counts = {'byte_count': 0, 'file_count': 0}
 
     for path in allFiles:
         if not os.path.isdir(path):
@@ -209,7 +209,7 @@ def processDisc(carrierData):
         logging.info(''.join(['cdInteractive: ', str(carrierInfo['cdInteractive'])]))
         logging.info(''.join(['multiSession: ', str(carrierInfo['multiSession'])]))
 
-        imagedInfo = {'byte_count': 0, 'file_count' = 0}
+        imagedInfo = {'byte_count': 0, 'file_count': 0}
         if config.batchType == 'Bags':
             success, reject, rejectMsg, imagedInfo = bagDisc(dirDisc, carrierInfo)
         elif config.batchType == 'Disc Images':
@@ -234,7 +234,7 @@ def processDisc(carrierData):
                          carrierData['collID'],
                          carrierData['mediaID'],
                          volumeID,
-                         config.staffName,
+                         config.batchStaff,
                          str(success),
                          imagedInfo['byte_count'],
                          imagedInfo['file_count'],
@@ -302,7 +302,7 @@ def bagDisc(dirDisc, carrierInfo):
     success = True
     reject = False
     rejectMsg = ''
-    imagedInfo = {'byte_count': 0, 'file_count' = 0}
+    imagedInfo = {'byte_count': 0, 'file_count': 0}
 
     # Tests to skip bagging
     skip = False
@@ -346,7 +346,7 @@ def imageDisc(dirDisc, carrierInfo):
     success = True
     reject = False
     rejectMsg = ''
-    imagedInfo = {'byte_count': 0, 'file_count' = 0}
+    imagedInfo = {'byte_count': 0, 'file_count': 0}
 
     if carrierInfo["containsAudio"]:
         logging.info('*** Ripping audio ***')

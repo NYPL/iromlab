@@ -15,7 +15,7 @@ def extractData(writeDirectory):
 
     bag_dir = os.path.join(writeDirectory, 'objects', os.path.basename(writeDirectory) + '_bag')
 
-    imagedInfo = {'byte_count': 0, 'file_count' = 0}
+    imagedInfo = {'byte_count': 0, 'file_count': 0}
     try:
         bag = bagit.make_bag(
             config.cdDriveLetter + ":", checksums = ["md5"], dest_dir = bag_dir
