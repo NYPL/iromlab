@@ -130,7 +130,7 @@ class carrierEntry(tk.Frame):
                 tkMessageBox.showerror("Error", msg)
 
             config.batchType = self.batchType.get()
-            config.staffName = self.staff_name.get()
+            config.batchStaff = self.batchStaff.get()
 
             # Set up logging
             successLogger = True
@@ -446,15 +446,17 @@ class carrierEntry(tk.Frame):
         self.batchType = tk.StringVar(self, 'Bags')
         tk.Label(self, text='Batch Type').grid(column = 0, row = 3, sticky='w')
         self.batchTypeMenu = tk.OptionMenu(self, self.batchType, *batchTypes)
-        self.batchTypeMenu.grid(column =1, row = 3, sticky='ew', columnspan=2)
+        self.batchTypeMenu.grid(column=1, row = 3, sticky='ew', columnspan=2)
 
-        tk.Label(self, text='Collection ID').grid(column=0, row=4, sticky='w')
+        staffNames = [x.strip() for x in config.staff.split(',')]
+        self.batchStaff = tk.StringVar(self, staffNames[0])
+        tk.Label(self, text='Staff Name').grid(column=0, row=4, sticky='w')
+        self.staff_name = tk.OptionMenu(self, self.batchStaff, *staffNames)
+        self.staff_name.grid(column=1, row=4, sticky='ew', columnspan=2)
+
+        tk.Label(self, text='Collection ID').grid(column=0, row=5, sticky='w')
         self.coll_entry = tk.Entry(self, width=45, state='disabled')
-        self.coll_entry.grid(column=1, row=4, sticky='w', columnspan=3)
-        
-        tk.Label(self, text='Staff Name').grid(column=0, row=5, sticky='w')
-        self.staff_name = tk.Entry(self, width=45, state='disabled')
-        self.staff_name.grid(column=1, row=5, sticky='w', columnspan=3)
+        self.coll_entry.grid(column=1, row=5, sticky='w', columnspan=3)
 
         self.batch_button = tk.Button(
             self,
@@ -665,6 +667,7 @@ def getConfiguration():
     configElt = ETree.Element("bogus")
     configElt.append(root)
 
+    config.staff = findElementText(configElt, './config/staff')
     config.cdDriveLetter = findElementText(configElt, './config/cdDriveLetter')
     config.rootDir = findElementText(configElt, './config/rootDir')
     config.tempDir = findElementText(configElt, './config/tempDir')
