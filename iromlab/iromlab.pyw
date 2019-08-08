@@ -105,6 +105,7 @@ class carrierEntry(tk.Frame):
         else:
             # Construct batch name
             self.batchName = self.coll_entry.get().strip() + '-' + self.batchID
+            config.batchName = self.batchName
             config.batchFolder = os.path.join(config.rootDir, self.batchName)
             try:
                 os.makedirs(config.batchFolder)
@@ -127,6 +128,9 @@ class carrierEntry(tk.Frame):
             except IOError:
                 msg = 'Cannot create failed jobs folder ' + config.jobsFailedFolder
                 tkMessageBox.showerror("Error", msg)
+
+            config.batchType = self.batchType.get()
+            config.staffName = self.staff_name.get()
 
             # Set up logging
             successLogger = True
@@ -305,7 +309,7 @@ class carrierEntry(tk.Frame):
             jobCSV = csv.writer(fJob, lineterminator='\n')
 
             # Row items to list
-            rowItems = ([jobID, self.current_media_id, 'queued'])
+            rowItems = ([jobID, self.current_coll ,self.current_media_id, 'queued'])
 
             # Write row to job and close file
             jobCSV.writerow(rowItems)
@@ -322,7 +326,7 @@ class carrierEntry(tk.Frame):
 
     def setupLogger(self):
         """Set up logging-related settings"""
-        logFile = os.path.join(config.batchFolder, 'batch.log')
+        logFile = os.path.join(config.batchFolder, self.batchName + '.log')
 
         logging.basicConfig(handlers=[logging.FileHandler(logFile, 'a', 'utf-8')],
                             level=logging.INFO,
@@ -362,7 +366,7 @@ class carrierEntry(tk.Frame):
         """Build the GUI"""
         
         # Read configuration file
-        #getConfiguration()
+        getConfiguration()
         
         self.root.title('iromlab v.' + config.version)
         self.root.option_add('*tearOff', 'FALSE')
@@ -517,7 +521,7 @@ class carrierEntry(tk.Frame):
         self.bOpen.config(state='normal')
         self.bFinalise.config(state='disabled')
         self.bExit.config(state='normal')
-        self.batchTypes.config(state='disabled')
+        self.batchTypeMenu.config(state='disabled')
         self.coll_entry.config(state='disabled')
         self.staff_name.config(state='disabled')
         self.submit_button.config(state='disabled')
