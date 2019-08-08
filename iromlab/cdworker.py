@@ -151,10 +151,8 @@ def processDisc(carrierData):
 
     if not discLoaded:
         success = False
-        resultReject = drivers.reject()
-        logging.error('no disc loaded')
-        logging.info(''.join(['reject command: ', resultReject['cmdStr']]))
-        logging.info(''.join(['reject command output: ', resultReject['log'].strip()]))
+        reject = True
+        rejectMsg = 'No disc loaded'
         #
         # !!IMPORTANT!!: we can end up here b/c of 2 situations:
         #
@@ -198,32 +196,20 @@ def processDisc(carrierData):
         logging.info(''.join(['multiSession: ', str(carrierInfo['multiSession'])]))
 
         if config.batchType == 'Bags':
-            success, reject = bagDisc(dirDisc, carrierInfo)
+            success, reject, rejectMsg = bagDisc(dirDisc, carrierInfo)
         elif config.batchType == 'Disc Images':
-            success, reject = imageDisc(dirDisc, carrierInfo)
+            success, reject, rejectMsg = imageDisc(dirDisc, carrierInfo)
 
-    # Unload or reject disc
-        if not reject:
-            logging.info('*** Unloading disc ***')
-            resultUnload = drivers.unload()
-            logging.info(''.join(['unload command: ', resultUnload['cmdStr']]))
-            logging.info(''.join(['unload command output: ', resultUnload['log'].strip()]))
+        # Create comma-delimited batch manifest entry for this carrier
+
+        # VolumeIdentifier only defined for ISOs, not for pure audio CDs and CD Interactive!
+        if carrierInfo["containsData"]:
+            try:
+                volumeID = resultIsoBuster['volumeIdentifier'].strip()
+            except Exception:
+                volumeID = ''
         else:
-            logging.info('*** Rejecting disc ***')
-            resultReject = drivers.reject()
-            logging.info(''.join(['reject command: ', resultReject['cmdStr']]))
-            logging.info(''.join(['reject command output: ', resultReject['log'].strip()]))
-
-    # Create comma-delimited batch manifest entry for this carrier
-
-    # VolumeIdentifier only defined for ISOs, not for pure audio CDs and CD Interactive!
-    if discLoaded and carrierInfo["containsData"]:
-        try:
-            volumeID = resultIsoBuster['volumeIdentifier'].strip()
-        except Exception:
             volumeID = ''
-    else:
-        volumeID = ''
 
     # Put all items for batch manifest entry in a list
     rowBatchManifest = ([jobID,
@@ -237,7 +223,39 @@ def processDisc(carrierData):
                          str(carrierInfo['containsData']),
                          str(carrierInfo['cdExtra']),
                          str(carrierInfo['mixedMode']),
-                         str(carrierInfo['cdInteractive'])])
+                         str(carrierInfo['cdInteractive']),
+                         rejectMsg])
+
+    # Unload or reject disc
+    if not reject:
+        logging.info('*** Unloading disc ***')
+        resultUnload = drivers.unload()
+        logging.info(''.join(['unload command: ', resultUnload['cmdStr']]))
+        logging.info(''.join(['unload command output: ', resultUnload['log'].strip()]))
+
+    else:
+        logging.info('*** Rejecting disc ***')
+        resultReject = drivers.reject()
+        logging.info(''.join(['reject command: ', resultReject['cmdStr']]))
+        logging.info(''.join(['reject command output: ', resultReject['log'].strip()]))
+
+        logging.info('*** Deleting disc files ***')
+
+        discLog.close()
+        logger.removeHandler(discLog)
+        os.rename(logFile, os.path.join(config.jobsFailedFolder, carrierData['mediaID'] + '.log'))
+
+        shutil.rmtree(dirDisc)
+        
+        # Open batch manifest in append mode
+        fm = open(config.failManifest, "a", encoding="utf-8")
+
+        # Create CSV writer object
+        csvFm = csv.writer(fm, lineterminator='\n')
+
+        # Write row to batch manifest and close file
+        csvFm.writerow(rowBatchManifest)
+        fm.close()
 
     # Open batch manifest in append mode
     bm = open(config.batchManifest, "a", encoding="utf-8")
@@ -248,7 +266,12 @@ def processDisc(carrierData):
     # Write row to batch manifest and close file
     csvBm.writerow(rowBatchManifest)
     bm.close()
-    logger.removeHandler(discLog)
+
+    try:
+        discLog.close()
+        logger.removeHandler(discLog)
+    except:
+        pass
 
     return success
 
@@ -259,25 +282,40 @@ def bagDisc(dirDisc, carrierInfo):
 
     success = True
     reject = False
+    rejectMsg = ''
 
-    if (carrierInfo["containsAudio"] or carrierInfo["cdExtra"] or carrierInfo["mixedMode"] or
-        carrierInfo["cdInteractive"] or os.path.exists(config.cdDriveLetter + ":\\AUDIO_TS")):
+    # Tests to skip bagging
+    skip = False
+    # Commercial-ish AMI
+    if carrierInfo["containsAudio"]:
+        skip = True
+        rejectMsg = 'Audio AMI'
+    elif (carrierInfo["cdExtra"] or carrierInfo["mixedMode"] or carrierInfo["cdInteractive"]):
+        skip = True
+        rejectMsg = 'Complex media'
+    # DVD video
+    elif os.path.exists(config.cdDriveLetter + ":\\AUDIO_TS"):
+        skip = True
+        rejectMsg = 'DVD AMI'
+    # Software install
+    elif any([x.lower() == 'autorun.inf' for x in os.listdir(config.cdDriveLetter + ":\\")]):
+        skip = True
+        rejectMsg = 'Software install media'
 
+
+    if skip:
         logging.info('*** Not bagging. Rejecting disc for later imaging. ***')
         success = False
         reject = True
-
     else:
         logging.info('*** Bagging data on disc ***')
         success, reject = discbag.extractData(dirDisc)
-
-    if reject:
-        logging.info('*** Deleting disc files ***')
-        shutil.rmtree(dirDisc)
+        if reject:
+            rejectMsg = 'Bagging failed'
 
         ### report data bagged
 
-    return success, reject
+    return success, reject, rejectMsg
 
 
 def imageDisc(dirDisc, carrierInfo):
@@ -287,6 +325,7 @@ def imageDisc(dirDisc, carrierInfo):
 
     success = True
     reject = False
+    rejectMsg = ''
 
     if carrierInfo["containsAudio"]:
         logging.info('*** Ripping audio ***')
@@ -325,7 +364,7 @@ def imageDisc(dirDisc, carrierInfo):
         reject = True
         logging.error("Writing of checksum file resulted in an error")
 
-    return success, reject
+    return success, reject, rejectMsg
 
 
 def processCDAudio(dirDisc):
@@ -485,31 +524,34 @@ def cdWorker():
 
     # Define batch manifest (CSV file with minimal metadata on each carrier)
     config.batchManifest = os.path.join(config.batchFolder, 'manifest-' + config.batchName + '.csv')
+    config.failManifest = os.path.join(config.batchFolder, 'failmanifest-' + config.batchName + '.csv')
 
     # Write header row if batch manifest doesn't exist already
-    if not os.path.isfile(config.batchManifest):
-        headerBatchManifest = (['jobID',
-                                'dateTime'
-                                'collection',
-                                'mediaID',
-                                'volumeID',
-                                'staffName'
-                                'success',
-                                'containsAudio',
-                                'containsData',
-                                'cdExtra',
-                                'mixedMode',
-                                'cdInteractive'])
+    for path in [config.batchManifest, config.failManifest]:
+        if not os.path.isfile(path):
+            headerBatchManifest = (['jobID',
+                                    'dateTime'
+                                    'collection',
+                                    'mediaID',
+                                    'volumeID',
+                                    'staffName'
+                                    'success',
+                                    'containsAudio',
+                                    'containsData',
+                                    'cdExtra',
+                                    'mixedMode',
+                                    'cdInteractive',
+                                    'failReason'])
 
-        # Open batch manifest in append mode
-        bm = open(config.batchManifest, "a", encoding="utf-8")
+            # Open batch manifest in append mode
+            manifest = open(path, "a", encoding="utf-8")
 
-        # Create CSV writer object
-        csvBm = csv.writer(bm, lineterminator='\n')
+            # Create CSV writer object
+            csvBm = csv.writer(manifest, lineterminator='\n')
 
-        # Write header to batch manifest and close file
-        csvBm.writerow(headerBatchManifest)
-        bm.close()
+            # Write header to batch manifest and close file
+            csvBm.writerow(headerBatchManifest)
+            manifest.close()
 
     # Initialise batch
     logging.info('*** Initialising batch ***')
@@ -553,7 +595,6 @@ def cdWorker():
                 config.batchIsOpen = False
                 os.remove(jobOldest)
                 shutil.rmtree(config.jobsFolder)
-                shutil.rmtree(config.jobsFailedFolder)
                 logging.info('*** End Of Batch job found, closing batch ***')
                 # Wait 2 seconds to avoid race condition between logging and KeyboardInterrupt
                 time.sleep(2)
@@ -570,13 +611,9 @@ def cdWorker():
                 success = processDisc(carrierData)
                 #success = processDiscTest(carrierData)
 
-            if success and not endOfBatchFlag:
+            if not endOfBatchFlag:
                 # Remove job file
                 os.remove(jobOldest)
-            elif not endOfBatchFlag:
-                # Move job file to failed jobs folder
-                baseName = os.path.basename(jobOldest)
-                os.rename(jobOldest, os.path.join(config.jobsFailedFolder, baseName))
 
         # Check if user pressed Exit, and quit if so ...
         if config.quitFlag:
