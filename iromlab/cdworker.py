@@ -74,6 +74,20 @@ def generate_file_sha512(fileIn):
     return m.hexdigest()
 
 
+def countFiles(directory):
+    """Calculate byte and file count for all files in directory"""
+
+    allFiles = glob.glob(directory + "/*")
+    counts = {'byte_count': 0, 'file_count' = 0}
+
+    for path in allFiles:
+        if not os.path.isdir(path):
+            counts['byte_count'] += os.stat(path).st_size
+            counts['file_count'] += 1
+
+    return counts
+
+
 def checksumDirectory(directory):
     """Calculate checksums for all files in directory"""
 
@@ -195,13 +209,13 @@ def processDisc(carrierData):
         logging.info(''.join(['cdInteractive: ', str(carrierInfo['cdInteractive'])]))
         logging.info(''.join(['multiSession: ', str(carrierInfo['multiSession'])]))
 
+        imagedInfo = {'byte_count': 0, 'file_count' = 0}
         if config.batchType == 'Bags':
-            success, reject, rejectMsg = bagDisc(dirDisc, carrierInfo)
+            success, reject, rejectMsg, imagedInfo = bagDisc(dirDisc, carrierInfo)
         elif config.batchType == 'Disc Images':
-            success, reject, rejectMsg = imageDisc(dirDisc, carrierInfo)
+            success, reject, rejectMsg, imagedInfo = imageDisc(dirDisc, carrierInfo)
 
-        # Create comma-delimited batch manifest entry for this carrier
-
+        '''
         # VolumeIdentifier only defined for ISOs, not for pure audio CDs and CD Interactive!
         if carrierInfo["containsData"]:
             try:
@@ -210,6 +224,9 @@ def processDisc(carrierData):
                 volumeID = ''
         else:
             volumeID = ''
+        '''
+    # blank for now
+    volumeID = ''
 
     # Put all items for batch manifest entry in a list
     rowBatchManifest = ([jobID,
@@ -219,6 +236,8 @@ def processDisc(carrierData):
                          volumeID,
                          config.staffName,
                          str(success),
+                         imagedInfo['byte_count'],
+                         imagedInfo['file_count'],
                          str(carrierInfo['containsAudio']),
                          str(carrierInfo['containsData']),
                          str(carrierInfo['cdExtra']),
@@ -283,6 +302,7 @@ def bagDisc(dirDisc, carrierInfo):
     success = True
     reject = False
     rejectMsg = ''
+    imagedInfo = {'byte_count': 0, 'file_count' = 0}
 
     # Tests to skip bagging
     skip = False
@@ -309,13 +329,13 @@ def bagDisc(dirDisc, carrierInfo):
         reject = True
     else:
         logging.info('*** Bagging data on disc ***')
-        success, reject = discbag.extractData(dirDisc)
+        success, reject, imagedInfo = discbag.extractData(dirDisc)
         if reject:
             rejectMsg = 'Bagging failed'
 
         ### report data bagged
 
-    return success, reject, rejectMsg
+    return success, reject, rejectMsg, imagedInfo
 
 
 def imageDisc(dirDisc, carrierInfo):
@@ -326,6 +346,7 @@ def imageDisc(dirDisc, carrierInfo):
     success = True
     reject = False
     rejectMsg = ''
+    imagedInfo = {'byte_count': 0, 'file_count' = 0}
 
     if carrierInfo["containsAudio"]:
         logging.info('*** Ripping audio ***')
@@ -355,16 +376,19 @@ def imageDisc(dirDisc, carrierInfo):
         reject = True
         logging.error("Unable to identify disc type")
 
-    # Generate checksum file
-    logging.info('*** Computing checksums ***')
-    successChecksum = checksumDirectory(dirDisc)
+    if success:
+        imagedInfo = countFiles(dirDisc)
 
-    if not successChecksum:
-        success = False
-        reject = True
-        logging.error("Writing of checksum file resulted in an error")
+        # Generate checksum file
+        logging.info('*** Computing checksums ***')
+        successChecksum = checksumDirectory(dirDisc)
 
-    return success, reject, rejectMsg
+        if not successChecksum:
+            success = False
+            reject = True
+            logging.error("Writing of checksum file resulted in an error")
+
+    return success, reject, rejectMsg, imagedInfo
 
 
 def processCDAudio(dirDisc):
@@ -536,6 +560,8 @@ def cdWorker():
                                     'volumeID',
                                     'staffName'
                                     'success',
+                                    'byteCount',
+                                    'fileCount',
                                     'containsAudio',
                                     'containsData',
                                     'cdExtra',
