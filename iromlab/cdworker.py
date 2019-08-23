@@ -12,6 +12,7 @@ import csv
 import hashlib
 import logging
 import pythoncom
+import win32api
 import wmi
 import _thread as thread
 from datetime import datetime
@@ -151,7 +152,7 @@ def processDisc(carrierData):
 
     # Test if disc is loaded
     discLoaded = False
-
+    imagedInfo = {'byte_count': 0, 'file_count': 0}
     # Reject if no CD is found after 20 s
     timeout = time.time() + int(config.secondsToTimeout)
     while not discLoaded and time.time() < timeout:
@@ -215,18 +216,12 @@ def processDisc(carrierData):
         elif config.batchType == 'Disc Images':
             success, reject, rejectMsg, imagedInfo = imageDisc(dirDisc, carrierInfo)
 
-        '''
+        
         # VolumeIdentifier only defined for ISOs, not for pure audio CDs and CD Interactive!
-        if carrierInfo["containsData"]:
-            try:
-                volumeID = resultIsoBuster['volumeIdentifier'].strip()
-            except Exception:
-                volumeID = ''
-        else:
-            volumeID = ''
-        '''
-    # blank for now
-    volumeID = ''
+    try:
+        volumeID = win32api.GetVolumeInformation(config.cdDriveLetter + ":\\")[0]
+    except Exception:
+        volumeID = ''
 
     # Put all items for batch manifest entry in a list
     rowBatchManifest = ([jobID,
@@ -264,7 +259,8 @@ def processDisc(carrierData):
         logger.removeHandler(discLog)
         os.rename(logFile, os.path.join(config.jobsFailedFolder, carrierData['mediaID'] + '.log'))
 
-        shutil.rmtree(dirDisc)
+        os.rename(dirDisc, dirDisc + "_failed")
+        #shutil.rmtree(dirDisc)
         
         # Open batch manifest in append mode
         fm = open(config.failManifest, "a", encoding="utf-8")
@@ -306,6 +302,13 @@ def bagDisc(dirDisc, carrierInfo):
 
     # Tests to skip bagging
     skip = False
+    try:
+        contents = os.listdir(config.cdDriveLetter + ":\\")
+    except:
+        skip = True
+        rejectMsg = 'Blank media'
+        contents = []
+
     # Commercial-ish AMI
     if carrierInfo["containsAudio"]:
         skip = True
@@ -318,7 +321,7 @@ def bagDisc(dirDisc, carrierInfo):
         skip = True
         rejectMsg = 'DVD AMI'
     # Software install
-    elif any([x.lower() == 'autorun.inf' for x in os.listdir(config.cdDriveLetter + ":\\")]):
+    elif contents and any([x.lower() == 'autorun.inf' for x in contents]):
         skip = True
         rejectMsg = 'Software install media'
 
@@ -554,11 +557,11 @@ def cdWorker():
     for path in [config.batchManifest, config.failManifest]:
         if not os.path.isfile(path):
             headerBatchManifest = (['jobID',
-                                    'dateTime'
+                                    'dateTime',
                                     'collection',
                                     'mediaID',
                                     'volumeID',
-                                    'staffName'
+                                    'staffName',
                                     'success',
                                     'byteCount',
                                     'fileCount',
