@@ -98,7 +98,7 @@ class carrierEntry(tk.Frame):
             msg = "Collection ID should be M#####"
             tkMessageBox.showerror("Error", msg)
             self.on_create()
-        elif not self.staff_name.get():
+        elif not self.batchStaff.get():
             msg = "Please fill in the Staff Name field"
             tkMessageBox.showerror("Error mismatch", msg)
             self.on_create()
@@ -106,7 +106,7 @@ class carrierEntry(tk.Frame):
             # Construct batch name
             self.batchName = self.coll_entry.get().strip() + '-' + self.batchID
             config.batchName = self.batchName
-            config.batchFolder = os.path.join(config.rootDir, self.batchName)
+            config.batchFolder = os.path.join(config.rootDir, self.coll_entry.get().strip(), self.batchName)
             try:
                 os.makedirs(config.batchFolder)
             except IOError:
@@ -182,8 +182,15 @@ class carrierEntry(tk.Frame):
         options['parent'] = self.root
         options['title'] = 'Select batch directory'
         config.batchFolder = tkFileDialog.askdirectory(**self.dir_opt)
+        self.batchName = os.path.basename(config.batchFolder)
+        config.batchName = self.batchName
+        self.current_coll = self.batchName.split('-')[0]
         config.jobsFolder = os.path.join(config.batchFolder, 'jobs')
         config.jobsFailedFolder = os.path.join(config.batchFolder, 'jobsFailed')
+
+        with open(os.path.join(config.batchFolder, 'manifest-' + config.batchName + '.csv')) as manf:
+            batchInfo = manf.readlines()[1].split(',')
+            self.batchStaff = tk.StringVar(self, batchInfo[5])
 
         # Check if batch was already finalized, and exit if so 
         if not os.path.isdir(config.jobsFolder):
@@ -192,7 +199,6 @@ class carrierEntry(tk.Frame):
         else:
             # Set up logging
             successLogger = True
-
             try:
                 self.setupLogger()
                 # Start polling log messages from the queue
@@ -214,7 +220,7 @@ class carrierEntry(tk.Frame):
                     jobFiles.sort(key=lambda x: os.path.getctime(x))
                     jobCount = 1
 
-                    for job in  jobFiles:
+                    for job in jobFiles:
                          # Open job file, read contents to list
                         fj = open(job, "r", encoding="utf-8")
                         fjCSV = csv.reader(fj)
@@ -222,11 +228,11 @@ class carrierEntry(tk.Frame):
                         fj.close()
 
                         if jobList[0] != 'EOB':
-                            media_id = jobList[1]
-                            status = jobList[2]
+                            media_id = jobList[2]
+                            status = jobList[3]
 
                             # Add Media ID number to treeview widget
-                            self.tv.insert('', 0, text=str(jobCount), values=(media_id, status))
+                            self.tv.insert('', 0, text=str(media_id), values=(jobCount, status))
                             jobCount += 1
 
                     # Update state of buttons /widgets, taking into account whether batch was
@@ -235,6 +241,8 @@ class carrierEntry(tk.Frame):
                     self.bOpen.config(state='disabled')
                     self.batch_button.config(state='disabled')
                     self.batchTypeMenu.config(state='disabled')
+                    self.coll_entry.config(state='normal')
+                    self.coll_entry.insert(tk.END, self.current_coll)
                     self.coll_entry.config(state='disabled')
                     self.staff_name.config(state='disabled')
                     if os.path.isfile(os.path.join(config.jobsFolder, 'eob.txt')):
@@ -246,6 +254,11 @@ class carrierEntry(tk.Frame):
                     self.media_entry.config(state='normal')
                     self.media_entry.delete(0, tk.END)
                     self.media_entry.insert(tk.END, "1")
+                    #####
+                    # look for cleaner way to do this
+                    #####
+                    config.batchType = self.batchType.get()
+                    config.batchStaff = self.batchStaff.get()
 
                     # Flag that is True if batch is open
                     config.batchIsOpen = True
@@ -500,7 +513,10 @@ class carrierEntry(tk.Frame):
         self.tv.column('#0', stretch=tk.YES, width=50)
         self.tv.column('#1', stretch=tk.YES, width=25)
         self.tv.column('#2', stretch=tk.YES, width=50)
+        self.tvscroll = ttk.Scrollbar(self, orient='vertical', command=self.tv.yview) 
         self.tv.grid(column=0, row=11, sticky='ew', columnspan=4)
+        self.tvscroll.grid(column=3, row=11, sticky='nse')
+        self.tv.configure(yscroll=self.tvscroll.set) 
 
         # ScrolledText widget displays logging info
         self.st = ScrolledText.ScrolledText(self, state='disabled', height=15)
