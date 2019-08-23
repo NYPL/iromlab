@@ -5,6 +5,7 @@ sys.path.append("C:\\Users\\mssa-admin\\dev\\iromlab\\iromlab")
 import os
 import io
 import shutil
+import stat
 import bagit
 from . import config
 from . import shared
@@ -20,13 +21,17 @@ def extractData(writeDirectory):
         bag = bagit.make_bag(
             config.cdDriveLetter + ":", checksums = ["md5"], dest_dir = bag_dir
         )
-        imaged_info['byte_count'], imaged_info['file_count'] = bag.info.get("Payload-Oxum").split(".", 1)
+        imagedInfo['byte_count'], imagedInfo['file_count'] = bag.info["Payload-Oxum"].split(".", 1)
         success = True
         reject = False
     except:
-        shutil.rmtree(os.path.join(writeDirectory, 'objects'))
+        # shutil.rmtree(os.path.join(writeDirectory, 'objects'), onerror=del_ro)
         byte_count, file_count = 0, 0
         success = False
         reject = True
 
     return success, reject, imagedInfo
+
+def del_ro(action, name, exc):
+    os.chmod(name, stat.S_WRITE)
+    os.remove(name)
