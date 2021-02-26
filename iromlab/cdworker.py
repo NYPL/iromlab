@@ -322,8 +322,8 @@ def bagDisc(dirDisc, carrierInfo):
         rejectMsg = 'DVD AMI'
     # Software install
     elif contents and any([x.lower() == 'autorun.inf' for x in contents]):
-        skip = True
-        rejectMsg = 'Software install media'
+        skip = False
+        rejectMsg = 'May contain software'
 
 
     if skip:
