@@ -34,7 +34,7 @@ Before Iromlab is ready for use you need to configure it. As a first step, locat
 
 ![](./img/iromlab-configure-location.png)
 
-If you did a user install, it will be somewhere in your Windows user profile (see below). The exact location depends on your local Windows configuration. As an example, in my case it is located in the folder *C:\Users\jkn010\AppData\Roaming\Python\Python36\Scripts*.
+If you did a user install, it will be somewhere in your Windows user profile (see below). The exact location depends on your local Windows configuration. As an example, in my case it is located in the folder *C:\Users\username\AppData\Roaming\Python\Python36\Scripts*.
 
 Run the configuration application by double-clicking on it. The application will create a configuration directory in your Windows user directory, copy a default configuration file to it, and create a shortcut to the main Iromlab application on the Windows Desktop [^1]. If all goes well the following window appears:
 
@@ -54,15 +54,9 @@ Locate the Windows User Profile directory[^2]. Open a Command Prompt window and 
 
 The output will be something like this:
 
-    USERPROFILE=C:\Users\jkn010
+    USERPROFILE=C:\Users\username
 
-If you open this location on your machine with Window Explorer you will find that it contains a folder named *iromlab*:   
-
-![](./img/userDir.png)
-
-Open the folder, and you will see this:
-
-![](./img/userDir2.png)
+If you open this location on your machine with Window Explorer you will find that it contains a folder named *iromlab*.
 
 ## Editing the configuration file
 
